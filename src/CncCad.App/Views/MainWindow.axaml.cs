@@ -11,6 +11,9 @@ using Avalonia.Threading;
 using Avalonia.Media;
 using System.Diagnostics;
 using CncCad.Core.Transforms;
+using CncCad.Infrastructure.Settings;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Platform;
 
 namespace CncCad.App.Views;
 
@@ -20,16 +23,49 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _playbackTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
     private readonly Stopwatch _playbackClock = new();
     private bool _updatingPlayback;
+    private readonly IApplicationPreferencesStore? _preferencesStore;
+    private ApplicationPreferences _preferences = ApplicationPreferences.Defaults;
     private MainWindowViewModel ViewModel => (MainWindowViewModel)DataContext!;
-    public MainWindow() { InitializeComponent(); Loaded += (_, _) => ConfigureCanvas(); Closing += OnClosing; KeyDown += OnKeyDown; _playbackTimer.Tick += PlaybackTick; _playbackTimer.Start(); _playbackClock.Start(); }
+    public MainWindow() : this(null) { }
+    public MainWindow(IApplicationPreferencesStore? preferencesStore) { _preferencesStore=preferencesStore;InitializeComponent(); Loaded += async (_, _) => { ConfigureCanvas();await LoadPreferencesAsync();ConfigurePlatformMenu();}; Closing += OnClosing; KeyDown += OnKeyDown; _playbackTimer.Tick += PlaybackTick; _playbackTimer.Start(); _playbackClock.Start(); }
     private void ConfigureCanvas()
     {
         Canvas.Document = ViewModel.Document; Canvas.Toolpaths = ViewModel.Program;Canvas.Operations=ViewModel.Operations; Canvas.Selection = ViewModel.Selection; Canvas.SnapSettings = ViewModel.SnapSettings;Canvas.Fixtures=ViewModel.CamJob.Fixtures;Canvas.SafetyFindings=ViewModel.SafetyFindings;
         Canvas.EntityCreated = entity => { ViewModel.AddEntity(entity); Canvas.InvalidateVisual(); };
         Canvas.SelectionMoved = delta => { ViewModel.MoveSelection(delta); Canvas.InvalidateVisual(); };
+        Canvas.SelectionTransformed = (transform,description) => { ViewModel.TransformSelection(transform,description); Canvas.InvalidateVisual(); };
         Canvas.NodeMoved = (entity,index,point) => { ViewModel.MoveNode(entity,index,point); Canvas.InvalidateVisual(); };
         Canvas.TabPlacementRequested=point=>{try{ViewModel.AddManualTabAt(point);Canvas.InvalidateVisual();}catch(Exception ex){ViewModel.Message=ex.Message;}};
+        Canvas.TrimRequested=candidate=>{try{ViewModel.ApplyInteractiveTrim(candidate);Canvas.InvalidateVisual();}catch(Exception ex){ViewModel.Message=ex.Message;}};Canvas.TrimStatusChanged=status=>ViewModel.Message=status;
         Canvas.SelectionChanged = ViewModel.SelectionChanged; Canvas.PointerStatusChanged = ViewModel.UpdatePointer; Canvas.InteractionStatusChanged = ViewModel.UpdateInteraction; Canvas.SetTool(CanvasTool.Select);
+    }
+    private async Task LoadPreferencesAsync()
+    {
+        if(_preferencesStore is not null)_preferences=await _preferencesStore.LoadAsync();
+        ApplyPreferences(_preferences);
+    }
+    private void ApplyPreferences(ApplicationPreferences p)
+    {
+        _preferences=p;Canvas.ShowGrid=p.ShowGrid;Canvas.SnappingEnabled=p.SnappingEnabled;Canvas.ShowToolpaths=p.ShowToolpaths;
+        ViewModel.SnapSettings.Grid=p.SnapToGrid;ViewModel.SnapSettings.Endpoint=p.SnapToEndpoints;ViewModel.SnapSettings.Midpoint=p.SnapToMidpoints;ViewModel.SnapSettings.Center=p.SnapToCenters;ViewModel.SnapSettings.GridSpacingMm=p.GridSpacingMm;
+        GridToggle.IsChecked=p.ShowGrid;SnapToggle.IsChecked=p.SnappingEnabled;PathsToggle.IsChecked=p.ShowToolpaths;
+        SetWorkspaceFocus(p.StartupWorkspace==StartupWorkspace.Design?WorkspaceFocus.Design:WorkspaceFocus.Toolpaths,p.StartupWorkspace==StartupWorkspace.Design?300:0,p.StartupWorkspace==StartupWorkspace.Toolpaths?410:0);
+        Resources["CncAccentBrush"]=new SolidColorBrush(p.Accent==AccentPreference.System?Color.Parse("#4CC2FF"):Color.Parse("#65C9FF"));Canvas.InvalidateVisual();
+    }
+    private void ConfigurePlatformMenu(){ApplicationMenuBar.IsVisible=!OperatingSystem.IsMacOS();if(OperatingSystem.IsMacOS())NativeDock.SetMenu(this,BuildNativeMenu());}
+    private NativeMenu BuildNativeMenu()
+    {
+        NativeMenuItem Item(string label,Action action,KeyGesture? gesture=null,Func<bool>? enabled=null){var command=new ApplicationCommand(label,label,action,enabled,gesture);return new NativeMenuItem(label){Gesture=gesture,Command=command};}
+        NativeMenuItem Root(string label,params NativeMenuItemBase[] children){var menu=new NativeMenu();foreach(var child in children)menu.Add(child);return new NativeMenuItem(label){Menu=menu};}
+        var menu=new NativeMenu();
+        var recentMenu=new NativeMenu();void RefreshRecent(){recentMenu.Items.Clear();foreach(var project in ViewModel.RecentProjects){var path=project.Path;recentMenu.Add(Item(project.Name,()=>_=OpenRecentPathAsync(path)));}if(ViewModel.RecentProjects.Count>0)recentMenu.Add(new NativeMenuItemSeparator());recentMenu.Add(Item("Clear Recent Projects",()=>_=ClearRecentProjectsAsync()));}recentMenu.NeedsUpdate+=(_,_)=>RefreshRecent();RefreshRecent();var recentRoot=new NativeMenuItem("Open Recent"){Menu=recentMenu};
+        menu.Add(Root("CNC CAD",Item("About CNC CAD",()=>About_Click(null,new RoutedEventArgs())),Item("Settings…",()=>Settings_Click(null,new RoutedEventArgs()),new(Key.OemComma,KeyModifiers.Meta)),new NativeMenuItemSeparator(),Item("Quit CNC CAD",Close,new(Key.Q,KeyModifiers.Meta))));
+        menu.Add(Root("File",Item("New Job",()=>NewJob_Click(null,new RoutedEventArgs()),new(Key.N,KeyModifiers.Meta)),Item("Open…",()=>Open_Click(null,new RoutedEventArgs()),new(Key.O,KeyModifiers.Meta)),recentRoot,Item("Save",()=>Save_Click(null,new RoutedEventArgs()),new(Key.S,KeyModifiers.Meta)),Item("Save As…",()=>SaveAs_Click(null,new RoutedEventArgs()),new(Key.S,KeyModifiers.Meta|KeyModifiers.Shift)),Item("Import SVG/DXF…",()=>Import_Click(null,new RoutedEventArgs())),Item("Export .nc…",()=>ExportNc_Click(null,new RoutedEventArgs())),Item("Export .txt…",()=>ExportTxt_Click(null,new RoutedEventArgs())),Item("Export .tap…",()=>ExportTap_Click(null,new RoutedEventArgs()))));
+        menu.Add(Root("Edit",Item("Undo",()=>Undo_Click(null,new RoutedEventArgs()),new(Key.Z,KeyModifiers.Meta)),Item("Redo",()=>Redo_Click(null,new RoutedEventArgs()),new(Key.Z,KeyModifiers.Meta|KeyModifiers.Shift)),Item("Copy",()=>Copy_Click(null,new RoutedEventArgs()),new(Key.C,KeyModifiers.Meta)),Item("Paste",()=>Paste_Click(null,new RoutedEventArgs()),new(Key.V,KeyModifiers.Meta)),Item("Duplicate",()=>Duplicate_Click(null,new RoutedEventArgs()),new(Key.D,KeyModifiers.Meta)),Item("Delete",()=>Delete_Click(null,new RoutedEventArgs())),Item("Select All",()=>SelectAll_Click(null,new RoutedEventArgs()),new(Key.A,KeyModifiers.Meta))));
+        menu.Add(Root("View",Item("Design Focus",()=>DesignFocus_Click(null,new RoutedEventArgs())),Item("Toolpaths Focus",()=>ToolpathFocus_Click(null,new RoutedEventArgs())),Item("2D Design",()=>DesignView_Click(null,new RoutedEventArgs())),Item("Toolpath Preview",()=>ToolpathView_Click(null,new RoutedEventArgs())),Item("Zoom to Fit",()=>ZoomFit_Click(null,new RoutedEventArgs()),new(Key.F,KeyModifiers.None)),Item("Zoom to Selection",()=>ZoomSelection_Click(null,new RoutedEventArgs()))));
+        menu.Add(Root("Design",Item("Select / Move",()=>SetDrawingTool(CanvasTool.Select)),Item("Line",()=>SetDrawingTool(CanvasTool.Line)),Item("Polyline",()=>SetDrawingTool(CanvasTool.Polyline)),Item("Rectangle",()=>SetDrawingTool(CanvasTool.Rectangle)),Item("Circle",()=>SetDrawingTool(CanvasTool.Circle)),Item("Three-Point Arc",()=>SetDrawingTool(CanvasTool.Arc)),Item("Scissors Trim",()=>TrimTool_Click(null,new RoutedEventArgs()))));
+        menu.Add(Root("Toolpaths",Item("Create Profile…",()=>CreateProfile_Click(null,new RoutedEventArgs())),Item("Create Engraving…",()=>CreateEngrave_Click(null,new RoutedEventArgs())),Item("Create V-Carve…",()=>CreateVCarve_Click(null,new RoutedEventArgs())),Item("Run Preflight",()=>RunPreflight_Click(null,new RoutedEventArgs())),Item("Preview Selected",()=>PreviewSelected_Click(null,new RoutedEventArgs())),Item("Preview All",()=>PreviewGCode_Click(null,new RoutedEventArgs()))));
+        menu.Add(Root("Help",Item("Keyboard Shortcuts…",()=>Shortcuts_Click(null,new RoutedEventArgs())),Item("About CNC CAD",()=>About_Click(null,new RoutedEventArgs()))));return menu;
     }
     private void DrawingToolPalette_SelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
@@ -41,10 +77,16 @@ public partial class MainWindow : Window
     private void ZoomFit_Click(object? s, RoutedEventArgs e) { if (Canvas.ToolpathPreviewMode) Canvas.Fit3D(); else Canvas.ZoomToFit(); }
     private void ZoomSelection_Click(object? s, RoutedEventArgs e) => Canvas.ZoomToSelection();
     private void SelectTool_Click(object? s, RoutedEventArgs e) { DrawingToolPalette.SelectedItem = null; Canvas.SetTool(CanvasTool.Select); ViewModel.ActivePaletteItem = null; ViewModel.SetActiveToolGuidance(CanvasTool.Select); }
+    private void SetDrawingTool(CanvasTool tool){if(tool==CanvasTool.Select){SelectTool_Click(null,new RoutedEventArgs());return;}var item=ViewModel.CreationTools.FirstOrDefault(x=>x.Tool==tool);if(item is not null)DrawingToolPalette.SelectedItem=item;}
+    private void DrawingToolMenu_Click(object? sender,RoutedEventArgs e){if(sender is MenuItem{Tag:string value}&&Enum.TryParse<CanvasTool>(value,out var tool))SetDrawingTool(tool);}
     private void CenterSelection_Click(object? s, RoutedEventArgs e) { ViewModel.CenterSelectionOnMaterial(); Canvas.InvalidateVisual(); }
     private void GridToggle_Click(object? s, RoutedEventArgs e) { Canvas.ShowGrid = GridToggle.IsChecked == true; Canvas.InvalidateVisual(); }
     private void SnapToggle_Click(object? s, RoutedEventArgs e) { Canvas.SnappingEnabled = SnapToggle.IsChecked == true; Canvas.InvalidateVisual(); }
     private void PathsToggle_Click(object? s, RoutedEventArgs e) { Canvas.ShowToolpaths = PathsToggle.IsChecked == true; Canvas.InvalidateVisual(); }
+    private void GridMenu_Click(object? s,RoutedEventArgs e){GridToggle.IsChecked=!GridToggle.IsChecked;GridToggle_Click(s,e);}
+    private void SnapMenu_Click(object? s,RoutedEventArgs e){SnapToggle.IsChecked=!SnapToggle.IsChecked;SnapToggle_Click(s,e);}
+    private void PathsMenu_Click(object? s,RoutedEventArgs e){PathsToggle.IsChecked=!PathsToggle.IsChecked;PathsToggle_Click(s,e);}
+    private void CameraPresetMenu_Click(object? sender,RoutedEventArgs e){if(sender is MenuItem{Tag:string tag}&&Enum.TryParse<CameraPreset>(tag,out var preset)){Canvas.SetCameraPreset(preset);ViewModel.CameraView=preset.ToString();}}
     private void DesignView_Click(object? s, RoutedEventArgs e) { SetWorkspaceView(WorkspaceView.Design); }
     private void ToolpathView_Click(object? s, RoutedEventArgs e) { SetWorkspaceView(WorkspaceView.ToolpathPreview); }
     private void SetWorkspaceView(WorkspaceView view) { ViewModel.SetWorkspaceView(view); Canvas.ToolpathPreviewMode = view == WorkspaceView.ToolpathPreview; if (Canvas.ToolpathPreviewMode) Canvas.Enter3DPreview(); CenterWorkspaceGrid.RowDefinitions[2].Height=new GridLength(ViewModel.ShowPlaybackControls?86:0); DesignViewButton.IsChecked = view == WorkspaceView.Design; PreviewViewButton.IsChecked = view == WorkspaceView.ToolpathPreview; Canvas.InvalidateVisual(); }
@@ -63,6 +105,7 @@ public partial class MainWindow : Window
     private void PlaybackSlider_ValueChanged(object? sender, RangeBaseValueChangedEventArgs e) { if (_updatingPlayback || !ViewModel.HasPlayback) return; ViewModel.Playback.Seek(e.NewValue / 100); UpdatePlaybackFrame(); }
     private void PlaybackSpeed_SelectionChanged(object? sender, SelectionChangedEventArgs e) { if (sender is ComboBox { SelectedItem: double speed }) { ViewModel.PlaybackSpeed = speed; ViewModel.Playback.SetSpeed(speed); } }
     private void Delete_Click(object? s, RoutedEventArgs e) { ViewModel.DeleteSelection(); Canvas.InvalidateVisual(); }
+    private void SelectAll_Click(object? s,RoutedEventArgs e){ViewModel.Selection.Set(ViewModel.Document.Entities.Where(x=>x.IsVisible&&!x.IsLocked).Select(x=>x.Id));ViewModel.SelectionChanged();Canvas.InvalidateVisual();}
     private void Undo_Click(object? s, RoutedEventArgs e) { ViewModel.Undo(); Canvas.InvalidateVisual(); }
     private void Redo_Click(object? s, RoutedEventArgs e) { ViewModel.Redo(); Canvas.InvalidateVisual(); }
     private void Copy_Click(object? s, RoutedEventArgs e) => ViewModel.CopySelection();
@@ -82,12 +125,14 @@ public partial class MainWindow : Window
     private void DistributeV_Click(object? s,RoutedEventArgs e)=>RunCadAction(()=>ViewModel.DistributeSelection(false));
     private void Offset_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.OffsetSelection);
     private void Trim_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.TrimSelectionAtPoint);
+    private void TrimTool_Click(object? s,RoutedEventArgs e){NodeEditToggle.IsChecked=false;Canvas.NodeEditMode=false;DrawingToolPalette.SelectedItem=null;Canvas.SetTool(CanvasTool.Trim);ViewModel.ActivePaletteItem=null;ViewModel.SetActiveToolGuidance(CanvasTool.Trim);ViewModel.Message="Scissors active · hover a crossing-bounded segment and click";}
     private void Chamfer_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.ChamferSelection);
     private void Fillet_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.FilletSelection);
     private void Join_Click(object? s,RoutedEventArgs e)=>RunCadAction(()=>ViewModel.JoinSelection());
     private void OpenPath_Click(object? s,RoutedEventArgs e)=>RunCadAction(()=>ViewModel.SetPathClosed(false));
     private void ClosePath_Click(object? s,RoutedEventArgs e)=>RunCadAction(()=>ViewModel.SetPathClosed(true));
     private void NodeEdit_Click(object? s,RoutedEventArgs e){Canvas.NodeEditMode=NodeEditToggle.IsChecked==true;Canvas.SetTool(CanvasTool.Select);Canvas.InvalidateVisual();}
+    private void NodeEditMenu_Click(object? s,RoutedEventArgs e){NodeEditToggle.IsChecked=!NodeEditToggle.IsChecked;NodeEdit_Click(s,e);}
     private void ApplyNode_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.ApplyNodePosition);
     private void InsertNode_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.InsertNode);
     private void DeleteNode_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.DeleteNode);
@@ -125,6 +170,18 @@ public partial class MainWindow : Window
     private void CreatePolygon_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.CreatePolygon);
     private void CreateStar_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.CreateStar);
     private void CreateText_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.CreateText);
+    private void UpdateText_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.UpdateSelectedText);
+    private void CenterTextPath_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.CenterTextOnPath);
+    private void ReverseTextPath_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.ReverseTextPath);
+    private void FlipTextPath_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.FlipTextPath);
+    private void ResetTextSpacing_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.ResetTextSpacing);
+    private void ConvertText_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.ConvertSelectedTextToVectors);
+    private void ApplyColor_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.ApplyVectorColor);
+    private void PaletteColor_Click(object? s,RoutedEventArgs e){if(s is Control{Tag:string color})RunCadAction(()=>ViewModel.ChoosePaletteColor(color));}
+    private void PickColor_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.PickPrimaryColor);
+    private void LayerColor_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.UseLayerColor);
+    private void Group_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.GroupSelection);
+    private void Ungroup_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.UngroupSelection);
     private void AnalyzeRepair_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.AnalyzeRepair);
     private void ApplyRepair_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.ApplyRepair);
     private void AddLayer_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.AddLayer);
@@ -147,14 +204,23 @@ public partial class MainWindow : Window
     {
         if (FocusManager?.GetFocusedElement() is TextBox or NumericUpDown) return;
         var command = e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta);
-        if (command && e.Key == Key.C) { ViewModel.CopySelection(); e.Handled = true; }
+        if(command&&e.Key==Key.N){NewJob_Click(null,new RoutedEventArgs());e.Handled=true;}
+        else if(command&&e.Key==Key.O){Open_Click(null,new RoutedEventArgs());e.Handled=true;}
+        else if(command&&e.Key==Key.S&&e.KeyModifiers.HasFlag(KeyModifiers.Shift)){SaveAs_Click(null,new RoutedEventArgs());e.Handled=true;}
+        else if(command&&e.Key==Key.S){Save_Click(null,new RoutedEventArgs());e.Handled=true;}
+        else if(command&&e.Key==Key.OemComma){Settings_Click(null,new RoutedEventArgs());e.Handled=true;}
+        else if(command&&e.Key==Key.A){SelectAll_Click(null,new RoutedEventArgs());e.Handled=true;}
+        else if (command && e.Key == Key.C) { ViewModel.CopySelection(); e.Handled = true; }
         else if (command && e.Key == Key.V) { ViewModel.Paste(); Canvas.InvalidateVisual(); e.Handled = true; }
         else if (command && e.Key == Key.D) { ViewModel.DuplicateSelection(); Canvas.InvalidateVisual(); e.Handled = true; }
         else if (e.Key is Key.Delete or Key.Back) { ViewModel.DeleteSelection(); Canvas.InvalidateVisual(); e.Handled = true; }
         else if (command && e.Key == Key.Z && e.KeyModifiers.HasFlag(KeyModifiers.Shift)) { ViewModel.Redo(); Canvas.InvalidateVisual(); e.Handled = true; }
         else if (command && e.Key == Key.Z) { ViewModel.Undo(); Canvas.InvalidateVisual(); e.Handled = true; }
         else if (command && e.Key == Key.Y) { ViewModel.Redo(); Canvas.InvalidateVisual(); e.Handled = true; }
-        else if (e.Key is Key.Escape or Key.Enter or Key.C && Canvas.HandleDrawingKey(e.Key)) e.Handled = true;
+        else if(e.Key==Key.F){ZoomFit_Click(null,new RoutedEventArgs());e.Handled=true;}
+        else if(e.Key==Key.Space){SelectTool_Click(null,new RoutedEventArgs());ViewModel.Message="Select / Move tool active";e.Handled=true;}
+        else if(e.Key==Key.Escape){if(!Canvas.HandleDrawingKey(e.Key))SelectTool_Click(null,new RoutedEventArgs());e.Handled=true;}
+        else if (e.Key is Key.Enter or Key.C && Canvas.HandleDrawingKey(e.Key)) e.Handled = true;
         else if (e.Key is Key.Left or Key.Right or Key.Up or Key.Down)
         {
             var distance = e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? 10d : 1d;
@@ -200,6 +266,22 @@ public partial class MainWindow : Window
         if (!File.Exists(path)) { await ViewModel.RemoveRecentProjectAsync(path); ViewModel.Message = "That recent project no longer exists."; return; }
         await OpenProjectAsync(path);
     }
+    private async void RecentMenuItem_Click(object? sender,RoutedEventArgs e)
+    {
+        if(sender is not MenuItem{Tag:string path}||!await ConfirmSafeToReplaceAsync())return;
+        if(!File.Exists(path)){await ViewModel.RemoveRecentProjectAsync(path);ViewModel.Message="That recent project no longer exists.";return;}await OpenProjectAsync(path);
+    }
+    private async Task OpenRecentPathAsync(string path){if(!await ConfirmSafeToReplaceAsync())return;if(!File.Exists(path)){await ViewModel.RemoveRecentProjectAsync(path);ViewModel.Message="That recent project no longer exists.";return;}await OpenProjectAsync(path);}
+    private async Task ClearRecentProjectsAsync(){await ViewModel.ClearRecentProjectsAsync();ViewModel.Message="Recent projects cleared";}
+    private async void ClearRecent_Click(object? sender,RoutedEventArgs e)=>await ClearRecentProjectsAsync();
+    private async void Settings_Click(object? sender,RoutedEventArgs e)
+    {
+        var result=await new SettingsWindow(_preferences).ShowDialog<ApplicationPreferences?>(this);if(result is null)return;
+        if(_preferencesStore is not null)await _preferencesStore.SaveAsync(result);ApplyPreferences(result);ViewModel.Message="Application settings saved";
+    }
+    private void About_Click(object? sender,RoutedEventArgs e)=>new AboutWindow().ShowDialog(this);
+    private void Shortcuts_Click(object? sender,RoutedEventArgs e)=>new KeyboardShortcutsWindow().ShowDialog(this);
+    private void Exit_Click(object? sender,RoutedEventArgs e)=>Close();
     private async Task OpenProjectAsync(string path)
     {
         try { await ViewModel.OpenProjectAsync(path); Canvas.Document = ViewModel.Document; Canvas.Toolpaths = ViewModel.Program;Canvas.Fixtures=ViewModel.CamJob.Fixtures;Canvas.SafetyFindings=ViewModel.SafetyFindings; Canvas.Reset3DView(); Canvas.ZoomToFit(); Canvas.InvalidateVisual(); }
@@ -226,14 +308,14 @@ public partial class MainWindow : Window
         try { var draft = ViewModel.CreateProfileDraft(); var result = await new ProfileOperationWindow(draft, ViewModel.Tools, ViewModel.Document.Job.ThicknessMm).ShowDialog<CncCad.Cam.Operations.ProfileOperationDefinition?>(this); if (result is not null) { ViewModel.AddOperation(result); Canvas.InvalidateVisual(); await PersistCamChangesAsync(); } }
         catch (Exception ex) { ViewModel.Message = ex.Message; }
     }
+    private async void CreateEngrave_Click(object? s,RoutedEventArgs e){try{var draft=ViewModel.CreateEngraveDraft();var result=await new EngraveOperationWindow(draft,ViewModel.Tools).ShowDialog<CncCad.Cam.Operations.EngraveOperationDefinition?>(this);if(result is null)return;ViewModel.AddOperation(result);Canvas.InvalidateVisual();await PersistCamChangesAsync();}catch(Exception ex){ViewModel.Message=ex.Message;}}
+    private async void CreateVCarve_Click(object? s,RoutedEventArgs e){try{var draft=ViewModel.CreateVCarveDraft();var result=await new VCarveOperationWindow(draft,ViewModel.Tools).ShowDialog<CncCad.Cam.Operations.VCarveOperationDefinition?>(this);if(result is null)return;ViewModel.AddOperation(result);Canvas.InvalidateVisual();await PersistCamChangesAsync();}catch(Exception ex){ViewModel.Message=ex.Message;}}
     private async void EditProfile_Click(object? s, RoutedEventArgs e)
     {
-        if (ViewModel.SelectedOperation is not CncCad.Cam.Operations.ProfileOperationDefinition operation) return;
-        var result = await new ProfileOperationWindow(operation, ViewModel.Tools, ViewModel.Document.Job.ThicknessMm).ShowDialog<CncCad.Cam.Operations.ProfileOperationDefinition?>(this);
-        if (result is not null) { ViewModel.UpdateOperation(operation, result); Canvas.InvalidateVisual(); await PersistCamChangesAsync(); }
+        if(ViewModel.SelectedOperation is CncCad.Cam.Operations.ProfileOperationDefinition operation){var result=await new ProfileOperationWindow(operation,ViewModel.Tools,ViewModel.Document.Job.ThicknessMm).ShowDialog<CncCad.Cam.Operations.ProfileOperationDefinition?>(this);if(result is not null)ViewModel.UpdateOperation(operation,result);else return;}else if(ViewModel.SelectedOperation is CncCad.Cam.Operations.EngraveOperationDefinition engraving){var result=await new EngraveOperationWindow(engraving,ViewModel.Tools).ShowDialog<CncCad.Cam.Operations.EngraveOperationDefinition?>(this);if(result is not null)ViewModel.UpdateOperation(engraving,result);else return;}else if(ViewModel.SelectedOperation is CncCad.Cam.Operations.VCarveOperationDefinition carve){var result=await new VCarveOperationWindow(carve,ViewModel.Tools).ShowDialog<CncCad.Cam.Operations.VCarveOperationDefinition?>(this);if(result is not null)ViewModel.UpdateOperation(carve,result);else return;}else return;Canvas.InvalidateVisual();await PersistCamChangesAsync();
     }
     private async void DeleteProfile_Click(object? s, RoutedEventArgs e) { if (ViewModel.SelectedOperation is { } operation) { ViewModel.DeleteOperation(operation); Canvas.InvalidateVisual(); await PersistCamChangesAsync(); } }
-    private async void DuplicateProfile_Click(object? s, RoutedEventArgs e) { if (ViewModel.SelectedOperation is CncCad.Cam.Operations.ProfileOperationDefinition operation) { ViewModel.DuplicateOperation(operation); Canvas.InvalidateVisual(); await PersistCamChangesAsync(); } }
+    private async void DuplicateProfile_Click(object? s, RoutedEventArgs e) { if (ViewModel.SelectedOperation is CncCad.Cam.Operations.ProfileOperationDefinition operation)ViewModel.DuplicateOperation(operation);else if(ViewModel.SelectedOperation is CncCad.Cam.Operations.EngraveOperationDefinition engraving)ViewModel.DuplicateOperation(engraving);else if(ViewModel.SelectedOperation is CncCad.Cam.Operations.VCarveOperationDefinition carve)ViewModel.DuplicateOperation(carve);else return;Canvas.InvalidateVisual();await PersistCamChangesAsync(); }
     private async void ToggleProfile_Click(object? s, RoutedEventArgs e) { if (ViewModel.SelectedOperation is { } operation) { ViewModel.ToggleOperation(operation); Canvas.InvalidateVisual(); await PersistCamChangesAsync(); } }
     private void RecalculateProfile_Click(object? s, RoutedEventArgs e) { if (ViewModel.SelectedOperation is { } operation) { ViewModel.CalculateOperation(operation); Canvas.InvalidateVisual(); } }
     private void TabEdit_Click(object? s,RoutedEventArgs e){Canvas.TabEditMode=TabEditToggle.IsChecked==true;Canvas.SetTool(CanvasTool.Select);ViewModel.Message=Canvas.TabEditMode?"Click a profile contour to place manual tabs":"Tab placement finished";}

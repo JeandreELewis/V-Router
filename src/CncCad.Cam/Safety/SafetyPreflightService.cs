@@ -24,18 +24,18 @@ public sealed class SafetyPreflightService : ISafetyPreflightService
                 findings.Add(new(SafetySeverity.Error, "operation-not-current", $"{operation.Name} is {operation.Status.ToString().ToLowerInvariant()}.", operation.Error ?? "Recalculate or correct this operation.", operation.Id));
             if (operation.Tool.CuttingLengthMm is null or <= 0 || operation.Tool.OverallLengthMm is null or <= 0 || operation.Tool.ShankDiameterMm is null or <= 0 || operation.Tool.StickOutMm is null or <= 0)
                 findings.Add(new(SafetySeverity.Error, "tool-data-missing", $"{operation.Name} has incomplete tool length or shank data.", "Edit the tool and refresh the operation snapshot.", operation.Id));
-            if (operation is not ProfileOperationDefinition profile) continue;
-            if (profile.SpindleRpm > machine.MaximumSpindleRpm)
-                findings.Add(new(SafetySeverity.Error, "spindle-limit", $"{profile.Name} requests {profile.SpindleRpm} RPM; machine maximum is {machine.MaximumSpindleRpm} RPM.", "Reduce operation RPM.", profile.Id));
-            if (profile.SafeZMm + Epsilon < machine.DefaultClearanceMm)
-                findings.Add(new(SafetySeverity.Error, "safe-z-low", $"{profile.Name} safe Z is below the machine clearance height.", $"Use at least {machine.DefaultClearanceMm:0.###} mm.", profile.Id));
-            if (profile.Tool.CuttingLengthMm is { } cuttingLength && profile.CutDepthMm > cuttingLength + Epsilon)
-                findings.Add(new(SafetySeverity.Error, "cutting-length", $"{profile.Name} cuts {profile.CutDepthMm:0.###} mm with only {cuttingLength:0.###} mm cutting length.", "Use a longer cutter or reduce depth.", profile.Id));
-            if (profile.Tool.StickOutMm is { } stickOut && profile.CutDepthMm > stickOut + Epsilon)
+            var parameters=operation switch{ProfileOperationDefinition p=>(SpindleRpm:p.SpindleRpm,SafeZMm:p.SafeZMm,CutDepthMm:p.CutDepthMm,FeedRateMmPerMin:p.FeedRateMmPerMin,PlungeRateMmPerMin:p.PlungeRateMmPerMin,PassDepthMm:p.PassDepthMm),EngraveOperationDefinition e=>(SpindleRpm:e.SpindleRpm,SafeZMm:e.SafeZMm,CutDepthMm:e.CutDepthMm,FeedRateMmPerMin:e.FeedRateMmPerMin,PlungeRateMmPerMin:e.PlungeRateMmPerMin,PassDepthMm:e.PassDepthMm),VCarveOperationDefinition v=>(SpindleRpm:v.SpindleRpm,SafeZMm:v.SafeZMm,CutDepthMm:v.MaximumDepthMm,FeedRateMmPerMin:v.FeedRateMmPerMin,PlungeRateMmPerMin:v.PlungeRateMmPerMin,PassDepthMm:v.OffsetStepOverMm),_=>(SpindleRpm:0,SafeZMm:0d,CutDepthMm:0d,FeedRateMmPerMin:0d,PlungeRateMmPerMin:0d,PassDepthMm:0d)};
+            if (parameters.SpindleRpm > machine.MaximumSpindleRpm)
+                findings.Add(new(SafetySeverity.Error, "spindle-limit", $"{operation.Name} requests {parameters.SpindleRpm} RPM; machine maximum is {machine.MaximumSpindleRpm} RPM.", "Reduce operation RPM.", operation.Id));
+            if (parameters.SafeZMm + Epsilon < machine.DefaultClearanceMm)
+                findings.Add(new(SafetySeverity.Error, "safe-z-low", $"{operation.Name} safe Z is below the machine clearance height.", $"Use at least {machine.DefaultClearanceMm:0.###} mm.", operation.Id));
+            if (operation.Tool.CuttingLengthMm is { } cuttingLength && parameters.CutDepthMm > cuttingLength + Epsilon)
+                findings.Add(new(SafetySeverity.Error, "cutting-length", $"{operation.Name} cuts {parameters.CutDepthMm:0.###} mm with only {cuttingLength:0.###} mm cutting length.", "Use a longer cutter or reduce depth.", operation.Id));
+            if (operation.Tool.StickOutMm is { } stickOut && parameters.CutDepthMm > stickOut + Epsilon)
                 findings.Add(new(SafetySeverity.Error, "stickout", $"{operation.Name} exceeds the {stickOut:0.###} mm tool stick-out.", "Increase verified stick-out or reduce depth.", operation.Id));
-            if(profile.FeedRateMmPerMin>profile.Tool.FeedRateMmPerMin+Epsilon)findings.Add(new(SafetySeverity.Warning,"feed-recommendation",$"{profile.Name} feed exceeds the tool snapshot recommendation.","Confirm the material and cutter can sustain this feed.",profile.Id));
-            if(profile.PlungeRateMmPerMin>profile.Tool.PlungeRateMmPerMin+Epsilon)findings.Add(new(SafetySeverity.Warning,"plunge-recommendation",$"{profile.Name} plunge rate exceeds the tool snapshot recommendation.","Reduce plunge rate or verify the cutter recommendation.",profile.Id));
-            if(profile.PassDepthMm>profile.Tool.StepDownMm+Epsilon)findings.Add(new(SafetySeverity.Warning,"stepdown-recommendation",$"{profile.Name} pass depth exceeds the tool snapshot recommendation.","Reduce pass depth or verify the cutter recommendation.",profile.Id));
+            if(parameters.FeedRateMmPerMin>operation.Tool.FeedRateMmPerMin+Epsilon)findings.Add(new(SafetySeverity.Warning,"feed-recommendation",$"{operation.Name} feed exceeds the tool snapshot recommendation.","Confirm the material and cutter can sustain this feed.",operation.Id));
+            if(parameters.PlungeRateMmPerMin>operation.Tool.PlungeRateMmPerMin+Epsilon)findings.Add(new(SafetySeverity.Warning,"plunge-recommendation",$"{operation.Name} plunge rate exceeds the tool snapshot recommendation.","Reduce plunge rate or verify the cutter recommendation.",operation.Id));
+            if(parameters.PassDepthMm>operation.Tool.StepDownMm+Epsilon)findings.Add(new(SafetySeverity.Warning,"stepdown-recommendation",$"{operation.Name} pass depth exceeds the tool snapshot recommendation.","Reduce pass depth or verify the cutter recommendation.",operation.Id));
         }
         foreach(var fixture in request.Fixtures.Where(x=>string.IsNullOrWhiteSpace(x.Name)||x.MaxXmm<=x.MinXmm||x.MaxYmm<=x.MinYmm||x.RequiredClearanceMm<0))
             findings.Add(new(SafetySeverity.Error,"fixture-invalid","A fixture has invalid bounds, name, or clearance.","Correct the fixture definition before preview or export."));
@@ -49,7 +49,7 @@ public sealed class SafetyPreflightService : ISafetyPreflightService
         {
             var definition = request.Operations.FirstOrDefault(x => x.Id == operation.SourceOperationId);
             var diameter = definition?.Tool.DiameterMm ?? 0;
-            var point = new Point2D(0, 0); var z = request.Operations.OfType<ProfileOperationDefinition>().Select(x=>x.SafeZMm).DefaultIfEmpty(machine.DefaultClearanceMm).Max();
+            var point = new Point2D(0, 0); var z = request.Operations.Select(x=>x switch{ProfileOperationDefinition p=>p.SafeZMm,EngraveOperationDefinition e=>e.SafeZMm,VCarveOperationDefinition v=>v.SafeZMm,_=>machine.DefaultClearanceMm}).DefaultIfEmpty(machine.DefaultClearanceMm).Max();
             for (var index = 0; index < operation.Moves.Count; index++)
             {
                 var move = operation.Moves[index];

@@ -33,7 +33,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly IRecentProjectStore _recentProjectStore;
     private readonly IMachineProfileRepository? _machineProfiles;
     private readonly ISafetyPreflightService _safetyPreflight = new SafetyPreflightService();
-    private readonly ICamOperationCalculator _operationCalculator = new ProfileOperationCalculator();
+    private readonly ICamOperationCalculator _operationCalculator = new CompositeOperationCalculator(new ProfileOperationCalculator(),new EngraveOperationCalculator(),new VCarveOperationCalculator());
     private readonly ICadOffsetService _offsetService = new CadOffsetService();
     private readonly UccncPostProcessor _postProcessor = new();
     private readonly JsonProjectSerializer _projectSerializer = new();
@@ -41,6 +41,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly IVectorRepairService _repairService = new VectorRepairService();
     private readonly IVectorTopologyService _topologyService = new VectorTopologyService();
     private readonly ITextOutlineService _textOutlineService = new PortableFallbackTextOutlineService();
+    private readonly IFontCatalog? _fontCatalog;
     private readonly INestingOptimizer _nestingOptimizer=new DeterministicNestingOptimizer();
     private readonly CommandHistory _history = new();
     private readonly List<CadEntity> _clipboard = [];
@@ -59,8 +60,11 @@ public partial class MainWindowViewModel : ViewModelBase
     public ObservableCollection<RepairIssue> RepairIssues { get; }=[];
     public ObservableCollection<NestPartDefinition> NestParts { get; }=[];
     public ObservableCollection<MaterialSheetDefinition> MaterialSheets { get; }=[];
+    public ObservableCollection<FontCatalogEntry> Fonts { get; }=[];
+    public ObservableCollection<string> RecentColors { get; }=[];
+    public IReadOnlyList<string> PaletteColors{get;}=["#65C9FF","#FFD84D","#FF6B6B","#70E08D","#B98CFF","#FFFFFF","#FF8C42","#38D6C5"];
     public IReadOnlyList<ToolPaletteItem> DrawingTools { get; } = ToolPaletteItem.DefaultDrawingTools;
-    public IReadOnlyList<ToolPaletteItem> CreationTools { get; } = ToolPaletteItem.DefaultDrawingTools.Where(item => item.Tool != CanvasTool.Select).ToArray();
+    public IReadOnlyList<ToolPaletteItem> CreationTools { get; } = ToolPaletteItem.DefaultDrawingTools.Where(item => item.Tool is not CanvasTool.Select and not CanvasTool.Trim).ToArray();
     public SelectionModel Selection { get; } = new();
     public SnapSettings SnapSettings { get; } = new();
     public ToolpathPlaybackSession Playback { get; } = new();
@@ -163,11 +167,28 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty] private string textValue="Text";
     [ObservableProperty] private string textFont="Inter";
     [ObservableProperty] private double textSize=12;
+    [ObservableProperty] private string textFontStyle="Regular";
+    [ObservableProperty] private double textLetterSpacing;
+    [ObservableProperty] private double textLineSpacing=1.2;
+    [ObservableProperty] private TextAlignment textAlignment;
+    [ObservableProperty] private FontCatalogEntry? selectedFont;
+    [ObservableProperty] private string fontSearch="";
+    [ObservableProperty] private string fontKindFilter="All";
+    [ObservableProperty] private double textPathOffset;
+    [ObservableProperty] private double textPathStart;
+    [ObservableProperty] private bool textPathReverse;
+    [ObservableProperty] private bool textPathFlip;
+    [ObservableProperty] private bool textPathFit;
+    [ObservableProperty] private bool textKeepUpright=true;
+    public IReadOnlyList<TextAlignment> TextAlignments=>Enum.GetValues<TextAlignment>();
+    [ObservableProperty] private string vectorColor="#61C8FF";
+    [ObservableProperty] private bool useDrawingColor;
     [ObservableProperty] private int cornerIndex=1;
     [ObservableProperty] private double chamferDistance=5;
     [ObservableProperty] private double filletRadius=5;
     private RepairAnalysis? _repairAnalysis;
     public IReadOnlyList<CadOffsetJoin> OffsetJoins => Enum.GetValues<CadOffsetJoin>();
+    public IReadOnlyList<string> FontKindFilters { get; }=["All","Outline","SingleLine","Stencil"];
     private readonly List<Point2D> _numericPolyline=[];
     [ObservableProperty] private double nodeX;
     [ObservableProperty] private double nodeY;
@@ -177,15 +198,17 @@ public partial class MainWindowViewModel : ViewModelBase
     public string OriginSummary=>HasJob?$"XY zero: {Document.Job.Origin}{(Math.Abs(Document.Job.OriginOffsetXmm)>1e-9||Math.Abs(Document.Job.OriginOffsetYmm)>1e-9?$" + ({Document.Job.OriginOffsetXmm:0.###}, {Document.Job.OriginOffsetYmm:0.###}) mm":"")} · Z zero: {Document.Job.ZZero}":"No datum defined";
     public string? ProjectPath { get; private set; }
 
-    public MainWindowViewModel(IToolLibrary toolLibrary, IRecentProjectStore recentProjectStore, IMachineProfileRepository? machineProfiles = null) { _toolLibrary = toolLibrary; _recentProjectStore = recentProjectStore; _machineProfiles = machineProfiles; SetActiveToolGuidance(CanvasTool.Select); }
+    public MainWindowViewModel(IToolLibrary toolLibrary, IRecentProjectStore recentProjectStore, IMachineProfileRepository? machineProfiles = null,ITextOutlineService? textOutlineService=null,IFontCatalog? fontCatalog=null) { _toolLibrary = toolLibrary; _recentProjectStore = recentProjectStore; _machineProfiles = machineProfiles;if(textOutlineService is not null)_textOutlineService=textOutlineService;_fontCatalog=fontCatalog; SetActiveToolGuidance(CanvasTool.Select); }
     public async Task LoadAsync()
     {
         Tools.Clear(); foreach (var tool in await _toolLibrary.GetAllAsync()) Tools.Add(tool);
         if (_machineProfiles is not null) { Machines.Clear(); foreach (var machine in await _machineProfiles.GetAllAsync()) Machines.Add(machine); SelectedMachine = Machines.FirstOrDefault(); }
         SelectedTool = Tools.FirstOrDefault(t => t.Name.StartsWith("6mm End Mill")) ?? Tools.FirstOrDefault();
+        Fonts.Clear();if(_fontCatalog is not null)foreach(var font in _fontCatalog.Fonts)Fonts.Add(font);SelectedFont=Fonts.FirstOrDefault(x=>x.Descriptor.Family.Equals("Inter",StringComparison.OrdinalIgnoreCase))??Fonts.FirstOrDefault();if(SelectedFont is not null)TextFont=SelectedFont.Descriptor.Family;
         await RefreshRecentProjectsAsync();
         RefreshLayers();
     }
+    partial void OnFontSearchChanged(string value)=>RefreshFonts();partial void OnFontKindFilterChanged(string value)=>RefreshFonts();private void RefreshFonts(){if(_fontCatalog is null)return;var selected=SelectedFont?.Descriptor.Family;Fonts.Clear();foreach(var font in _fontCatalog.Fonts.Where(x=>(string.IsNullOrWhiteSpace(FontSearch)||x.Descriptor.Family.Contains(FontSearch,StringComparison.OrdinalIgnoreCase))&&(FontKindFilter=="All"||x.Descriptor.Kind.ToString()==FontKindFilter)))Fonts.Add(font);SelectedFont=Fonts.FirstOrDefault(x=>x.Descriptor.Family==selected)??Fonts.FirstOrDefault();}
     public void CreateJob(JobSettings settings)
     {
         ClearPlayback();
@@ -200,6 +223,7 @@ public partial class MainWindowViewModel : ViewModelBase
     public void AddEntity(CadEntity entity)
     {
         if(Document.ActiveLayer.IsLocked)throw new InvalidOperationException("The active layer is locked.");
+        if(UseDrawingColor)entity.StrokeColor=VectorColor;
         _history.Execute(new AddEntityCommand(Document, entity)); Selection.Set(entity.Id); SelectionChanged(); UpdateHistoryState(); IsDirty = true;
         Message = $"{entity.GetType().Name.Replace("Entity", string.Empty)} created";
         RefreshWorkspaceState();
@@ -216,9 +240,34 @@ public partial class MainWindowViewModel : ViewModelBase
     public void CreateRoundedRectangle()=>AddEntity(ParametricShapes.RoundedRectangle(new(Point1X,Point1Y),ShapeWidth,ShapeHeight,CornerRadius,Document.ActiveLayerId));
     public void CreateText()
     {
-        var result=_textOutlineService.Create(new(TextValue,TextFont,"Regular",TextSize,0,1.2,TextAlignment.Left,new(Point1X,Point1Y)));AddEntity(new TextEntity{LayerId=Document.ActiveLayerId,Text=TextValue,FontFamily=TextFont,SizeMm=TextSize,Outlines=[..result.Outlines]});if(result.Warnings.Count>0)Message=result.Warnings[0];
+        var family=SelectedFont?.Descriptor.Family??TextFont;var result=_textOutlineService.Create(new(TextValue,family,TextFontStyle,TextSize,TextLetterSpacing,TextLineSpacing,TextAlignment,new(Point1X,Point1Y)));var source=VectorPathGeometry.Clone(result.Outlines);var guide=Document.Entities.SingleOrDefault(x=>Selection.Contains(x.Id)&&x is CircleEntity or ArcEntity or EllipseEntity or PolylineEntity or VectorPathEntity);var placement=new TextPathPlacement{GuideEntityId=guide?.Id,StartOffset=TextPathStart,BaselineOffsetMm=TextPathOffset,ReverseDirection=TextPathReverse,FlipSide=TextPathFlip,KeepUpright=TextKeepUpright,FitMode=TextPathFit?TextFitMode.FitSpacing:TextFitMode.Natural,GuideSnapshot=guide is null?[]:[..EntityGeometry.WorldPoints(guide)]};var outlines=guide is null?source:TextPathLayout.Fit(source,placement.GuideSnapshot,placement);AddEntity(new TextEntity{LayerId=Document.ActiveLayerId,Text=TextValue,FontFamily=family,FontStyle=TextFontStyle,SizeMm=TextSize,LetterSpacingMm=TextLetterSpacing,LineSpacing=TextLineSpacing,Alignment=TextAlignment,FontKind=result.Kind,LayoutMode=guide is null?TextLayoutMode.Straight:TextLayoutMode.FollowPath,PathPlacement=placement,GlyphAdvancesMm=[..result.GlyphAdvancesMm??[]],SourceOutlines=source,Outlines=[..outlines],Glyphs=BuildGlyphs(result,outlines)});if(result.Warnings.Count>0)Message=result.Warnings[0];
     }
+    public void UpdateSelectedText()
+    {
+        var text=SelectedEntities().OfType<TextEntity>().SingleOrDefault()??throw new InvalidOperationException("Select one editable text object.");
+        var family=SelectedFont?.Descriptor.Family??text.FontFamily;
+        var result=_textOutlineService.Create(new(TextValue,family,TextFontStyle,TextSize,TextLetterSpacing,TextLineSpacing,TextAlignment,new(Point1X,Point1Y)));
+        var source=VectorPathGeometry.Clone(result.Outlines);
+        var placement=new TextPathPlacement{GuideEntityId=text.PathPlacement.GuideEntityId,StartOffset=TextPathStart,BaselineOffsetMm=TextPathOffset,ReverseDirection=TextPathReverse,FlipSide=TextPathFlip,KeepUpright=TextKeepUpright,FitMode=TextPathFit?TextFitMode.FitSpacing:TextFitMode.Natural,GuideSnapshot=[..text.PathPlacement.GuideSnapshot]};
+        if(placement.GuideEntityId is{} guideId&&Document.Entities.FirstOrDefault(x=>x.Id==guideId) is{} guide)placement.GuideSnapshot=[..EntityGeometry.WorldPoints(guide)];
+        var outlines=placement.GuideEntityId is null?source:TextPathLayout.Fit(source,placement.GuideSnapshot,placement);
+        var replacement=(TextEntity)EntityGeometry.Clone(text);replacement.Text=TextValue;replacement.FontFamily=family;replacement.FontStyle=TextFontStyle;replacement.SizeMm=TextSize;replacement.LetterSpacingMm=TextLetterSpacing;replacement.LineSpacing=TextLineSpacing;replacement.Alignment=TextAlignment;replacement.FontKind=result.Kind;replacement.LayoutMode=placement.GuideEntityId is null?TextLayoutMode.Straight:TextLayoutMode.FollowPath;replacement.PathPlacement=placement;replacement.GlyphAdvancesMm=[..result.GlyphAdvancesMm??[]];replacement.SourceOutlines=source;replacement.Outlines=[..outlines];replacement.Glyphs=BuildGlyphs(result,outlines);
+        _history.Execute(new EditTextEntityCommand(text,replacement));AfterGeometryCommand([text.Id],"Editable text updated");if(result.Warnings.Count>0)Message=result.Warnings[0];
+    }
+    private static List<TextGlyphGeometry> BuildGlyphs(TextOutlineResult result,IReadOnlyList<VectorPathFigure> placed){var output=new List<TextGlyphGeometry>();var index=0;foreach(var glyph in result.Glyphs??[]){var count=glyph.Figures.Count;output.Add(new(){Cluster=glyph.Cluster,AdvanceMm=glyph.AdvanceMm,Order=glyph.Order,SourceFigures=VectorPathGeometry.Clone(glyph.Figures),PlacedFigures=VectorPathGeometry.Clone(placed.Skip(index).Take(count))});index+=count;}return output;}
+    public void CenterTextOnPath(){TextPathStart=.5;TextPathFit=false;UpdateSelectedText();}
+    public void ReverseTextPath(){TextPathReverse=!TextPathReverse;UpdateSelectedText();}
+    public void FlipTextPath(){TextPathFlip=!TextPathFlip;UpdateSelectedText();}
+    public void ResetTextSpacing(){TextLetterSpacing=0;TextPathFit=false;UpdateSelectedText();}
+    public void ConvertSelectedTextToVectors(){var texts=SelectedEntities().OfType<TextEntity>().ToArray();if(texts.Length==0)throw new InvalidOperationException("Select editable text first.");var additions=new List<CadEntity>();foreach(var text in texts){var group=Guid.NewGuid();var glyphs=text.Glyphs.Count>0?text.Glyphs.OrderBy(x=>x.Order).Select(x=>x.PlacedFigures):text.Outlines.Select(x=>(IEnumerable<VectorPathFigure>)[x]);foreach(var figures in glyphs)if(figures.Any())additions.Add(new VectorPathEntity{LayerId=text.LayerId,MaterialSheetId=text.MaterialSheetId,GroupId=group,StrokeColor=text.StrokeColor,Transform=text.Transform,Figures=VectorPathGeometry.Clone(figures)});}var ids=texts.Select(x=>x.Id).ToArray();_history.Execute(new ReplaceEntitiesCommand(Document,ids,additions,"Convert text to vectors"));Selection.Set(additions.Select(x=>x.Id));AfterGeometryCommand(ids.Concat(additions.Select(x=>x.Id)),"Converted text to grouped glyph vectors");}
+    public void ApplyVectorColor(){if(!HasSelection)throw new InvalidOperationException("Select vectors to color.");if(!System.Text.RegularExpressions.Regex.IsMatch(VectorColor,"^#[0-9a-fA-F]{6}$"))throw new InvalidOperationException("Enter a color as #RRGGBB.");VectorColor=VectorColor.ToUpperInvariant();var ids=Selection.Ids.ToArray();_history.Execute(new SetEntityColorCommand(Document,ids,VectorColor));if(!RecentColors.Contains(VectorColor)){RecentColors.Insert(0,VectorColor);while(RecentColors.Count>8)RecentColors.RemoveAt(RecentColors.Count-1);}AfterGeometryCommand(ids,"Vector color changed");}
+    public void ChoosePaletteColor(string color){VectorColor=color;UseDrawingColor=true;if(HasSelection)ApplyVectorColor();}
+    public void PickPrimaryColor(){var entity=Selection.PrimaryId is{} id?Document.Entities.FirstOrDefault(x=>x.Id==id):null;if(entity is null)throw new InvalidOperationException("Select a visible unlocked vector to sample its color.");var layer=Document.Layers.FirstOrDefault(x=>x.Id==entity.LayerId);VectorColor=entity.StrokeColor??layer?.Color??"#65C9FF";UseDrawingColor=true;Message=$"Picked {VectorColor}";}
+    public void UseLayerColor(){if(!HasSelection)return;var ids=Selection.Ids.ToArray();_history.Execute(new SetEntityColorCommand(Document,ids,null));AfterGeometryCommand(ids,"Vectors now inherit layer color");}
+    public void GroupSelection(){if(Selection.Count<2)throw new InvalidOperationException("Select at least two vectors to group.");var ids=Selection.Ids.ToArray();_history.Execute(new SetEntityGroupCommand(Document,ids,Guid.NewGuid()));AfterGeometryCommand(ids,"Vectors grouped");}
+    public void UngroupSelection(){var ids=SelectedEntities().Where(x=>x.GroupId is not null).Select(x=>x.Id).ToArray();if(ids.Length==0)throw new InvalidOperationException("Select grouped vectors.");_history.Execute(new SetEntityGroupCommand(Document,ids,null));AfterGeometryCommand(ids,"Vectors ungrouped");}
     public void TrimSelectionAtPoint(){var source=SelectedEntities();if(source.Length<2)throw new InvalidOperationException("Select the line to trim first, then its cutting vectors.");var result=_topologyService.Trim(source[0],source.Skip(1),new(Point1X,Point1Y),RepairTolerance);ReplaceTopology(source[0],result,"Trim vector");}
+    public void ApplyInteractiveTrim(TrimCandidate candidate){if(!candidate.Success)throw new InvalidOperationException(candidate.Error);_history.Execute(new ReplaceEntitiesCommand(Document,[candidate.TargetId],candidate.Replacements,"Trim vector"));Selection.Set(candidate.Replacements.Select(x=>x.Id));SelectionChanged();UpdateHistoryState();InvalidateOperations([candidate.TargetId]);IsDirty=true;RefreshWorkspaceState();Message="Vector trimmed";}
     public void ChamferSelection(){var path=SelectedEntities().OfType<PolylineEntity>().SingleOrDefault()??throw new InvalidOperationException("Select one polyline.");ReplaceTopology(path,_topologyService.Chamfer(path,CornerIndex,ChamferDistance),"Chamfer corner");}
     public void FilletSelection(){var path=SelectedEntities().OfType<PolylineEntity>().SingleOrDefault()??throw new InvalidOperationException("Select one polyline.");ReplaceTopology(path,_topologyService.Fillet(path,CornerIndex,FilletRadius),"Fillet corner");}
     private void ReplaceTopology(CadEntity source,VectorEditResult result,string description){if(!result.Success)throw new InvalidOperationException(result.Error);_history.Execute(new ReplaceEntitiesCommand(Document,[source.Id],result.Entities,description));Selection.Set(result.Entities.Select(x=>x.Id));SelectionChanged();AfterGeometryCommand([source.Id],description);}
@@ -236,7 +285,8 @@ public partial class MainWindowViewModel : ViewModelBase
     private void RefreshLayers(){var id=Document.ActiveLayerId;Layers.Clear();foreach(var layer in Document.Layers.OrderBy(x=>x.Order))Layers.Add(layer);SelectedLayer=Layers.FirstOrDefault(x=>x.Id==id)??Layers.FirstOrDefault();}
     public void SelectionChanged()
     {
-        SelectionStatus = Selection.Count switch { 0 => "Nothing selected", 1 => "1 entity selected", _ => $"{Selection.Count} entities selected" };
+        var primary=Selection.PrimaryId is{} primaryId?Document.Entities.FirstOrDefault(x=>x.Id==primaryId):null;var layer=primary is null?null:Document.Layers.FirstOrDefault(x=>x.Id==primary.LayerId);SelectionStatus = Selection.Count switch { 0 => "Nothing selected", 1 => $"{primary?.GetType().Name.Replace("Entity","")??"Vector"} · {layer?.Name??"Layer"} · {primary?.StrokeColor??layer?.Color??"default color"}", _ => $"{Selection.Count} entities selected · primary {primary?.GetType().Name.Replace("Entity","")??"vector"}" };
+        if(primary is TextEntity text&&Selection.Count==1){TextValue=text.Text;TextFont=text.FontFamily;TextFontStyle=text.FontStyle;TextSize=text.SizeMm;TextLetterSpacing=text.LetterSpacingMm;TextLineSpacing=text.LineSpacing;TextAlignment=text.Alignment;TextPathOffset=text.PathPlacement.BaselineOffsetMm;TextPathStart=text.PathPlacement.StartOffset;TextPathReverse=text.PathPlacement.ReverseDirection;TextPathFlip=text.PathPlacement.FlipSide;TextKeepUpright=text.PathPlacement.KeepUpright;TextPathFit=text.PathPlacement.FitMode==TextFitMode.FitSpacing;SelectedFont=Fonts.FirstOrDefault(x=>x.Descriptor.Family.Equals(text.FontFamily,StringComparison.OrdinalIgnoreCase));}
         HasSelection = Selection.Count > 0;
         CanAlign=Selection.Count>=2;CanDistribute=Selection.Count>=3;
         if (HasSelection) { var bounds = SelectionBounds(); SelectionX = bounds.MinX; SelectionY = bounds.MinY; PivotX=(bounds.MinX+bounds.MaxX)/2; PivotY=(bounds.MinY+bounds.MaxY)/2; }
@@ -327,12 +377,13 @@ public partial class MainWindowViewModel : ViewModelBase
     private BoundingBox SelectionBounds() => BoundingBox.FromPoints(Document.Entities.Where(e => Selection.Contains(e.Id)).SelectMany(e => { var b = e.GetBounds(); return new[] { new Point2D(b.MinX, b.MinY), new Point2D(b.MaxX, b.MaxY) }; }));
     private void InvalidateOperations(IEnumerable<Guid> ids)
     {
-        var values = ids.ToArray(); CamJob.MarkGeometryChanged(values, values.Any(id => Document.Entities.All(entity => entity.Id != id)));if(NestingJob.Parts.Any(p=>values.Contains(p.OuterGeometryId)||p.InnerGeometryIds.Any(values.Contains))||NestingJob.AcceptedLayout?.Placements.Any(p=>p.InstanceGeometryIds.Any(values.Contains))==true)NestingJob.Status=NestingLayoutStatus.Stale; RebuildProgram(); RefreshOperations(); ClearPlayback(); InvalidatePreflight(); GCodePreview = "Geometry changed — recalculate stale toolpaths.";
+        var values = ids.ToArray();var linked=RefreshLinkedText(values);values=[..values.Concat(linked).Distinct()]; CamJob.MarkGeometryChanged(values, values.Any(id => Document.Entities.All(entity => entity.Id != id)));if(NestingJob.Parts.Any(p=>values.Contains(p.OuterGeometryId)||p.InnerGeometryIds.Any(values.Contains))||NestingJob.AcceptedLayout?.Placements.Any(p=>p.InstanceGeometryIds.Any(values.Contains))==true)NestingJob.Status=NestingLayoutStatus.Stale; RebuildProgram(); RefreshOperations(); ClearPlayback(); InvalidatePreflight(); GCodePreview = "Geometry changed — recalculate stale toolpaths.";
     }
+    private IReadOnlyList<Guid> RefreshLinkedText(IReadOnlyCollection<Guid> changed){var affected=new List<Guid>();foreach(var text in Document.Entities.OfType<TextEntity>().Where(x=>x.LayoutMode==TextLayoutMode.FollowPath&&x.PathPlacement.GuideEntityId is{} id&&changed.Contains(id))){var guide=Document.Entities.FirstOrDefault(x=>x.Id==text.PathPlacement.GuideEntityId);if(guide is null){text.PathPlacement.GuideEntityId=null;continue;}text.PathPlacement.GuideSnapshot=[..EntityGeometry.WorldPoints(guide)];text.Outlines=[..TextPathLayout.Fit(text.SourceOutlines,text.PathPlacement.GuideSnapshot,text.PathPlacement)];var index=0;foreach(var glyph in text.Glyphs.OrderBy(x=>x.Order)){glyph.PlacedFigures=VectorPathGeometry.Clone(text.Outlines.Skip(index).Take(glyph.SourceFigures.Count));index+=glyph.SourceFigures.Count;}affected.Add(text.Id);}return affected;}
     public void DeleteSelection()
     {
         if (Selection.Count == 0) return;
-        var ids = Selection.Ids.ToArray(); _history.Execute(new DeleteEntitiesCommand(Document, ids)); Selection.Clear(); SelectionChanged(); UpdateHistoryState(); InvalidateOperations(ids); IsDirty = true; Message = "Selection deleted";
+        var ids = Selection.Ids.ToArray();var commands=new List<IUndoableCommand>();foreach(var text in Document.Entities.OfType<TextEntity>().Where(x=>x.PathPlacement.GuideEntityId is{} guide&&ids.Contains(guide)&&!ids.Contains(x.Id))){var detached=(TextEntity)EntityGeometry.Clone(text);detached.PathPlacement.GuideEntityId=null;detached.LayoutMode=TextLayoutMode.Straight;detached.SourceOutlines=VectorPathGeometry.Clone(detached.Outlines);foreach(var glyph in detached.Glyphs)glyph.SourceFigures=VectorPathGeometry.Clone(glyph.PlacedFigures);commands.Add(new EditTextEntityCommand(text,detached));}commands.Add(new DeleteEntitiesCommand(Document,ids));_history.Execute(new CompositeCommand(commands,"Delete vectors and detach linked text"));Selection.Clear(); SelectionChanged(); UpdateHistoryState(); InvalidateOperations(ids); IsDirty = true; Message = "Selection deleted";
     }
     public void Undo() { if (!_history.CanUndo) return; var command = _history.Undo(); Selection.Clear(); SelectionChanged(); UpdateHistoryState(); if (command is IEntityAffectingCommand affected) InvalidateOperations(affected.AffectedEntityIds); IsDirty = true; Message = "Undo"; }
     public void Redo() { if (!_history.CanRedo) return; var command = _history.Redo(); Selection.Clear(); SelectionChanged(); UpdateHistoryState(); if (command is IEntityAffectingCommand affected) InvalidateOperations(affected.AffectedEntityIds); IsDirty = true; Message = "Redo"; }
@@ -362,12 +413,18 @@ public partial class MainWindowViewModel : ViewModelBase
         var tool = SelectedTool ?? throw new InvalidOperationException("Select a tool first.");
         var sheets=selected.Select(x=>x.MaterialSheetId).Distinct().ToArray();if(sheets.Length>1)throw new InvalidOperationException("Create a profile from one material sheet at a time.");return new ProfileOperationDefinition { Name = $"Profile {CamJob.Operations.Count + 1}", GeometryIds = [.. Selection.Ids], Tool = ToolSnapshot.FromTool(tool), Order = CamJob.Operations.Count, CutDepthMm = Document.Job.ThicknessMm, PassDepthMm = tool.StepDownMm, SafeZMm = Document.Job.SafeZMm, FeedRateMmPerMin = tool.FeedRateMmPerMin, PlungeRateMmPerMin = tool.PlungeRateMmPerMin, SpindleRpm = tool.SpindleRpm,MaterialSheetId=sheets[0] };
     }
+    public EngraveOperationDefinition CreateEngraveDraft(){if(Selection.Count==0)throw new InvalidOperationException("Select one or more vectors or centerline text first.");var selected=Document.Entities.Where(x=>Selection.Contains(x.Id)).ToArray();if(selected.Any(x=>x is not LineEntity and not PolylineEntity and not ArcEntity and not CircleEntity and not EllipseEntity and not VectorPathEntity and not TextEntity))throw new InvalidOperationException("The selection contains geometry that cannot be engraved.");var tool=SelectedTool??throw new InvalidOperationException("Select an engraving tool.");var sheets=selected.Select(x=>x.MaterialSheetId).Distinct().ToArray();if(sheets.Length>1)throw new InvalidOperationException("Create engraving for one material sheet at a time.");return new(){Name=$"Engrave {CamJob.Operations.Count+1}",GeometryIds=selected.Select(x=>x.Id).ToList(),Tool=ToolSnapshot.FromTool(tool),Order=CamJob.Operations.Count,CutDepthMm=Math.Min(1,Document.Job.ThicknessMm),PassDepthMm=Math.Min(1,Math.Max(.1,tool.StepDownMm)),SafeZMm=Document.Job.SafeZMm,FeedRateMmPerMin=tool.FeedRateMmPerMin,PlungeRateMmPerMin=tool.PlungeRateMmPerMin,SpindleRpm=tool.SpindleRpm,MaterialSheetId=sheets[0]};}
+    public VCarveOperationDefinition CreateVCarveDraft(){if(Selection.Count==0)throw new InvalidOperationException("Select one or more closed outline vectors.");var selected=SelectedEntities();var tool=SelectedTool??throw new InvalidOperationException("Select a V-bit.");if(tool.Type is not ToolType.VBit and not ToolType.EngravingBit||tool.VBitAngleDegrees is not (>0 and <180))throw new InvalidOperationException("Choose a V-bit with a valid included angle.");var sheets=selected.Select(x=>x.MaterialSheetId).Distinct().ToArray();if(sheets.Length>1)throw new InvalidOperationException("Create V-carving for one material sheet at a time.");return new(){Name=$"V-Carve {CamJob.Operations.Count+1}",GeometryIds=selected.Select(x=>x.Id).ToList(),Tool=ToolSnapshot.FromTool(tool),Order=CamJob.Operations.Count,MaximumDepthMm=Math.Min(3,Document.Job.ThicknessMm),OffsetStepOverMm=Math.Max(.1,(tool.TipDiameterMm??.2)*.5),SafeZMm=Document.Job.SafeZMm,FeedRateMmPerMin=tool.FeedRateMmPerMin,PlungeRateMmPerMin=tool.PlungeRateMmPerMin,SpindleRpm=tool.SpindleRpm,MaterialSheetId=sheets[0]};}
     public void AddOperation(ProfileOperationDefinition operation) { ClearPlayback(); InvalidatePreflight(); CamJob.Operations.Add(operation); CamJob.NormalizeOrder(); CalculateOperation(operation); RefreshOperations(); SelectedOperation = operation; IsDirty = true; RefreshWorkspaceState(); }
+    public void AddOperation(EngraveOperationDefinition operation) { ClearPlayback();InvalidatePreflight();CamJob.Operations.Add(operation);CamJob.NormalizeOrder();CalculateOperation(operation);RefreshOperations();SelectedOperation=operation;IsDirty=true;RefreshWorkspaceState(); }
+    public void AddOperation(VCarveOperationDefinition operation) { ClearPlayback();InvalidatePreflight();CamJob.Operations.Add(operation);CamJob.NormalizeOrder();CalculateOperation(operation);RefreshOperations();SelectedOperation=operation;IsDirty=true;RefreshWorkspaceState(); }
     public void UpdateOperation(ProfileOperationDefinition target, ProfileOperationDefinition values)
     {
         target.Name = values.Name; target.GeometryIds = [.. values.GeometryIds]; target.Tool = values.Tool; target.IsEnabled = values.IsEnabled; target.Side = values.Side; target.Direction = values.Direction; target.StartDepthMm = values.StartDepthMm; target.CutDepthMm = values.CutDepthMm; target.PassDepthMm = values.PassDepthMm; target.SafeZMm = values.SafeZMm; target.FeedRateMmPerMin = values.FeedRateMmPerMin; target.PlungeRateMmPerMin = values.PlungeRateMmPerMin; target.SpindleRpm = values.SpindleRpm;target.MaterialSheetId=values.MaterialSheetId;target.Tabs=values.Tabs.Copy();
         ClearPlayback(); InvalidatePreflight(); CalculateOperation(target); RefreshOperations(); IsDirty = true; RefreshWorkspaceState();
     }
+    public void UpdateOperation(EngraveOperationDefinition target,EngraveOperationDefinition values){target.Name=values.Name;target.GeometryIds=[..values.GeometryIds];target.Tool=values.Tool;target.IsEnabled=values.IsEnabled;target.Direction=values.Direction;target.StartDepthMm=values.StartDepthMm;target.CutDepthMm=values.CutDepthMm;target.PassDepthMm=values.PassDepthMm;target.SafeZMm=values.SafeZMm;target.FeedRateMmPerMin=values.FeedRateMmPerMin;target.PlungeRateMmPerMin=values.PlungeRateMmPerMin;target.SpindleRpm=values.SpindleRpm;target.MaterialSheetId=values.MaterialSheetId;ClearPlayback();InvalidatePreflight();CalculateOperation(target);RefreshOperations();IsDirty=true;RefreshWorkspaceState();}
+    public void UpdateOperation(VCarveOperationDefinition target,VCarveOperationDefinition values){target.Name=values.Name;target.GeometryIds=[..values.GeometryIds];target.Tool=values.Tool;target.IsEnabled=values.IsEnabled;target.MaximumDepthMm=values.MaximumDepthMm;target.ClearFlatRegions=values.ClearFlatRegions;target.OffsetStepOverMm=values.OffsetStepOverMm;target.SafeZMm=values.SafeZMm;target.FeedRateMmPerMin=values.FeedRateMmPerMin;target.PlungeRateMmPerMin=values.PlungeRateMmPerMin;target.SpindleRpm=values.SpindleRpm;target.MaterialSheetId=values.MaterialSheetId;ClearPlayback();InvalidatePreflight();CalculateOperation(target);RefreshOperations();IsDirty=true;RefreshWorkspaceState();}
     public void AddManualTabAt(Point2D point)
     {
         if(SelectedOperation is not ProfileOperationDefinition operation)throw new InvalidOperationException("Select a profile operation first.");var entity=operation.GeometryIds.Select(id=>Document.Entities.FirstOrDefault(x=>x.Id==id)).Where(x=>x is not null).MinBy(x=>DistanceToContour(point,EntityGeometry.WorldPoints(x!)))??throw new InvalidOperationException("The operation geometry is missing.");var path=EntityGeometry.WorldPoints(entity);var total=Enumerable.Range(0,path.Count).Sum(i=>path[i].DistanceTo(path[(i+1)%path.Count]));var current=0d;var bestDistance=double.MaxValue;var bestAlong=0d;for(var i=0;i<path.Count;i++){var a=path[i];var b=path[(i+1)%path.Count];var segment=b-a;var length=segment.Length;var q=point-a;var t=length<1e-12?0:Math.Clamp((q.X*segment.X+q.Y*segment.Y)/(length*length),0,1);var projected=new Point2D(a.X+segment.X*t,a.Y+segment.Y*t);var distance=point.DistanceTo(projected);if(distance<bestDistance){bestDistance=distance;bestAlong=current+length*t;}current+=length;}operation.Tabs.Enabled=true;operation.Tabs.PlacementMode=TabPlacementMode.Manual;operation.Tabs.ManualPlacements.Add(new(Guid.NewGuid(),bestAlong/total,entity.Id));ClearPlayback();InvalidatePreflight();CalculateOperation(operation);RefreshOperations();IsDirty=true;Message=$"Added manual tab to {operation.Name}";
@@ -376,6 +433,8 @@ public partial class MainWindowViewModel : ViewModelBase
     private static double DistanceToContour(Point2D point,IReadOnlyList<Point2D> path)=>path.Count<2?double.MaxValue:Enumerable.Range(0,path.Count).Min(i=>{var a=path[i];var b=path[(i+1)%path.Count];var d=b-a;var length=d.Length;var q=point-a;var t=length<1e-12?0:Math.Clamp((q.X*d.X+q.Y*d.Y)/(length*length),0,1);return point.DistanceTo(new(a.X+d.X*t,a.Y+d.Y*t));});
     public void DeleteOperation(CamOperationDefinition operation) { ClearPlayback(); InvalidatePreflight(); CamJob.Operations.Remove(operation); CamJob.NormalizeOrder(); RefreshOperations(); RebuildProgram(); IsDirty = true; RefreshWorkspaceState(); }
     public void DuplicateOperation(ProfileOperationDefinition operation) { ClearPlayback(); InvalidatePreflight(); var copy = operation.Duplicate(); CamJob.Operations.Insert(Math.Min(operation.Order + 1, CamJob.Operations.Count), copy); CamJob.NormalizeOrder(); CalculateOperation(copy); RefreshOperations(); SelectedOperation = copy; IsDirty = true; RefreshWorkspaceState(); }
+    public void DuplicateOperation(EngraveOperationDefinition operation) { ClearPlayback();InvalidatePreflight();var copy=operation.Duplicate();CamJob.Operations.Insert(Math.Min(operation.Order+1,CamJob.Operations.Count),copy);CamJob.NormalizeOrder();CalculateOperation(copy);RefreshOperations();SelectedOperation=copy;IsDirty=true;RefreshWorkspaceState(); }
+    public void DuplicateOperation(VCarveOperationDefinition operation) { ClearPlayback();InvalidatePreflight();var copy=operation.Duplicate();CamJob.Operations.Insert(Math.Min(operation.Order+1,CamJob.Operations.Count),copy);CamJob.NormalizeOrder();CalculateOperation(copy);RefreshOperations();SelectedOperation=copy;IsDirty=true;RefreshWorkspaceState(); }
     public void ToggleOperation(CamOperationDefinition operation) { ClearPlayback(); InvalidatePreflight(); operation.IsEnabled = !operation.IsEnabled; operation.Status = operation.IsEnabled ? OperationStatus.Stale : OperationStatus.Disabled; if (operation.IsEnabled) CalculateOperation(operation); RefreshOperations(); RebuildProgram(); IsDirty = true; }
     public void MoveOperation(CamOperationDefinition operation, int delta) { var old = CamJob.Operations.IndexOf(operation); var next = Math.Clamp(old + delta, 0, CamJob.Operations.Count - 1); if (old == next) return; ClearPlayback(); InvalidatePreflight(); CamJob.Operations.RemoveAt(old); CamJob.Operations.Insert(next, operation); CamJob.NormalizeOrder(); RefreshOperations(); RebuildProgram(); SelectedOperation = operation; IsDirty = true; }
     public void CalculateOperation(CamOperationDefinition operation)
@@ -394,7 +453,7 @@ public partial class MainWindowViewModel : ViewModelBase
     }
     public IReadOnlyList<(MaterialSheetDefinition Sheet,string GCode,int WarningCount)> GenerateSheetPrograms()
     {
-        if(MaterialSheets.Count==0)throw new InvalidOperationException("Accept a multi-sheet nesting layout first.");RecalculateAll();var machine=CamJob.Machine??throw new InvalidOperationException("Select a complete machine snapshot before export.");var origin=CncCad.Core.Transforms.MachineCoordinateTransform.OriginInDocument(Document.Job);var profile=new MachineProfile{SafeZMm=Math.Max(Document.Job.SafeZMm,machine.DefaultClearanceMm),RapidRateMmPerMin=machine.RapidRateMmPerMin,MaximumSpindleRpm=machine.MaximumSpindleRpm,ParkXmm=machine.ParkXmm,ParkYmm=machine.ParkYmm,WorkZeroDocumentXmm=origin.X,WorkZeroDocumentYmm=origin.Y,WorkZeroZOffsetMm=Document.Job.ZZero==ZZeroPosition.MachineBed?Document.Job.ThicknessMm:0};var output=new List<(MaterialSheetDefinition,string,int)>();foreach(var sheet in MaterialSheets){var operations=CamJob.Operations.OfType<ProfileOperationDefinition>().Where(x=>x.MaterialSheetId==sheet.Id&&x.IsEnabled).Cast<CamOperationDefinition>().OrderBy(x=>x.Order).ToArray();var invalid=operations.FirstOrDefault(x=>x.CalculatedToolpath is null||x.Status!=OperationStatus.Current);if(invalid is not null)throw new InvalidOperationException($"{sheet.Name} · {invalid.Name}: {invalid.Error??"toolpath is not current"}");if(operations.Length==0)throw new InvalidOperationException($"{sheet.Name} has no enabled profile operations.");var program=new ToolpathProgram{Name=$"{Document.Job.Name} - {sheet.Name}",Operations=operations.Select(x=>x.CalculatedToolpath!).ToList()};var safety=RunPreflight(operations,program);if(!safety.CanExport)throw new InvalidOperationException($"{sheet.Name} preflight blocked export: {safety.Findings.First(x=>x.Severity==SafetySeverity.Error).Message}");output.Add((sheet,_postProcessor.Generate(program,profile),safety.WarningCount));}return output;
+        if(MaterialSheets.Count==0)throw new InvalidOperationException("Accept a multi-sheet nesting layout first.");RecalculateAll();var machine=CamJob.Machine??throw new InvalidOperationException("Select a complete machine snapshot before export.");var origin=CncCad.Core.Transforms.MachineCoordinateTransform.OriginInDocument(Document.Job);var profile=new MachineProfile{SafeZMm=Math.Max(Document.Job.SafeZMm,machine.DefaultClearanceMm),RapidRateMmPerMin=machine.RapidRateMmPerMin,MaximumSpindleRpm=machine.MaximumSpindleRpm,ParkXmm=machine.ParkXmm,ParkYmm=machine.ParkYmm,WorkZeroDocumentXmm=origin.X,WorkZeroDocumentYmm=origin.Y,WorkZeroZOffsetMm=Document.Job.ZZero==ZZeroPosition.MachineBed?Document.Job.ThicknessMm:0};var output=new List<(MaterialSheetDefinition,string,int)>();foreach(var sheet in MaterialSheets){var operations=CamJob.Operations.Where(x=>x.IsEnabled&&(x is ProfileOperationDefinition p&&p.MaterialSheetId==sheet.Id||x is EngraveOperationDefinition e&&e.MaterialSheetId==sheet.Id||x is VCarveOperationDefinition v&&v.MaterialSheetId==sheet.Id)).OrderBy(x=>x.Order).ToArray();var invalid=operations.FirstOrDefault(x=>x.CalculatedToolpath is null||x.Status!=OperationStatus.Current);if(invalid is not null)throw new InvalidOperationException($"{sheet.Name} · {invalid.Name}: {invalid.Error??"toolpath is not current"}");if(operations.Length==0)throw new InvalidOperationException($"{sheet.Name} has no enabled operations.");var program=new ToolpathProgram{Name=$"{Document.Job.Name} - {sheet.Name}",Operations=operations.Select(x=>x.CalculatedToolpath!).ToList()};var safety=RunPreflight(operations,program);if(!safety.CanExport)throw new InvalidOperationException($"{sheet.Name} preflight blocked export: {safety.Findings.First(x=>x.Severity==SafetySeverity.Error).Message}");output.Add((sheet,_postProcessor.Generate(program,profile),safety.WarningCount));}return output;
     }
     public void LoadSelectedPlayback()
     {
@@ -438,7 +497,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private void FinishPlaybackLoad() { Playback.SetSpeed(PlaybackSpeed); UpdatePlaybackStatus(); }
     private static string FormatTime(TimeSpan value) => value.TotalHours >= 1 ? value.ToString(@"hh\:mm\:ss") : value.ToString(@"mm\:ss");
     private void RebuildProgram() { Program.Name = Document.Job.Name; Program.Operations = CamJob.Operations.OrderBy(o => o.Order).Where(o => o.IsEnabled && o.Status == OperationStatus.Current && o.CalculatedToolpath is not null&&MatchesActiveSheet(o)).Select(o => o.CalculatedToolpath!).ToList(); }
-    private bool MatchesActiveSheet(CamOperationDefinition operation)=>SelectedMaterialSheet is null?operation is not ProfileOperationDefinition sourceProfile||sourceProfile.MaterialSheetId is null:operation is ProfileOperationDefinition sheetProfile&&sheetProfile.MaterialSheetId==SelectedMaterialSheet.Id;
+    private bool MatchesActiveSheet(CamOperationDefinition operation){var sheet=operation switch{ProfileOperationDefinition p=>p.MaterialSheetId,EngraveOperationDefinition e=>e.MaterialSheetId,VCarveOperationDefinition v=>v.MaterialSheetId,_=>null};return SelectedMaterialSheet is null?sheet is null:sheet==SelectedMaterialSheet.Id;}
     private void RefreshOperations() { var selected = SelectedOperation; Operations.Clear(); foreach (var operation in CamJob.Operations.OrderBy(o => o.Order).Where(MatchesActiveSheet)) Operations.Add(operation); SelectedOperation = selected is not null&&Operations.Contains(selected)?selected:null; }
     public async Task AddToolAsync() { var tool = new CncTool { Name = "6mm End Mill", ToolNumber = Tools.Count + 1, DiameterMm = 6, CuttingLengthMm=24, OverallLengthMm=50, ShankDiameterMm=6, StickOutMm=30 }; await _toolLibrary.SaveAsync(tool); Tools.Add(tool); SelectedTool = tool; Message = "Tool added to the persistent library"; }
     public async Task SaveProjectAsync(string path)
@@ -463,6 +522,7 @@ public partial class MainWindowViewModel : ViewModelBase
         await RefreshRecentProjectsAsync();
     }
     public async Task RemoveRecentProjectAsync(string path) { await _recentProjectStore.RemoveAsync(path); await RefreshRecentProjectsAsync(); }
+    public async Task ClearRecentProjectsAsync() { await _recentProjectStore.ClearAsync(); await RefreshRecentProjectsAsync(); }
     private async Task RefreshRecentProjectsAsync()
     {
         RecentProjects.Clear();
@@ -476,11 +536,12 @@ public partial class MainWindowViewModel : ViewModelBase
         ShowExactLine=tool==CanvasTool.Line;ShowExactPolyline=tool==CanvasTool.Polyline;ShowExactRectangle=tool==CanvasTool.Rectangle;ShowExactCircle=tool==CanvasTool.Circle;ShowExactArc=tool==CanvasTool.Arc;
         DesignGuidance = tool switch
         {
-            CanvasTool.Select => HasSelection ? $"{SelectionStatus}. Drag to move, or use the edit and position controls." : "Click an object or drag a selection box. Hold Ctrl/Shift to add to the selection.",
+            CanvasTool.Select => HasSelection ? $"{SelectionStatus}. Drag to move. Corner handles resize proportionally; hold Alt/Option for free resize." : "Click an object or drag a selection box. Hold Ctrl/Shift to add to the selection.",
             CanvasTool.Line => "Click a start and end point. Escape cancels the unfinished line.",
             CanvasTool.Polyline => "Click each point. Enter or double-click finishes; C closes; Escape cancels.",
             CanvasTool.Rectangle => "Drag from one corner to the opposite corner. Escape cancels.",
             CanvasTool.Circle => "Click the centre, then click the radius. Escape cancels.",
+            CanvasTool.Trim => "Scissors: hover the portion to remove, then click. Cutting vectors remain unchanged.",
             _ => "Click the start, a point on the arc, then the end. Escape cancels."
         };
     }

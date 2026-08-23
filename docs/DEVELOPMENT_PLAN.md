@@ -113,7 +113,8 @@ Core/IO/Infrastructure/Rendering sessions: distance, bounds, rotation, viewport 
 ## Supported toolpaths
 
 - Multi-contour profile: rectangle, closed polyline and circle; outside, inside and on-vector; climb and conventional
-- Pocket, drill and engrave: planned
+- Constant-depth engrave: line, polyline, arc, ellipse, native vector paths, and portable text strokes
+- Pocket and drill: planned
 
 ## Supported postprocessors
 
@@ -124,3 +125,11 @@ Core/IO/Infrastructure/Rendering sessions: distance, bounds, rotation, viewport 
 - Implemented project-v4 native line/quadratic/cubic vector paths, portable text-outline persistence, SVG/DXF import boundaries, import review, polygon/star/slot/rounded-rectangle creation, repair preview/apply, layer routing/visibility/locking/color/order, Bézier handle movement, and initial trim/fillet/chamfer services.
 - Next hardening pass: full nested DXF INSERT expansion and rational splines; exact trim/split/extend/weld across arcs, ellipses, and all Bézier combinations; platform font-outline adapters; per-repair-category selection and canvas hover previews.
 - Implemented project-v5 automatic/manual ramped profile tabs, direct canvas tab placement, deterministic grain-aware multi-sheet nesting, accepted sheet-owned copies, sheet-specific CAM/preflight/playback, and numbered batch export. Common-line cutting and arbitrary-angle rotation remain deferred.
+- Implemented project-v6 portable outline and centerline text geometry, live straight/path-linked editable text, undoable conversion to grouped vectors, per-vector color overrides, high-contrast geometry selection with overlap cycling, and persistent constant-depth engraving through playback, safety, save/reopen, and export.
+- Implemented project-v7 glyph-preserving text conversion, expanded spacing/alignment/path controls, undoable guide detachment, drawing-color inheritance, swatches/color sampling, V-bit tool snapshots, and persistent single-tool maximum-depth V-carving through playback, safety, sheets, save/reopen, and export.
+- Text-library hardening still required: complete licensed Hershey/JHF family binaries, curated OFL font binaries with per-file checksums, SQLite favorites/recent-font persistence, detailed cutter-compatibility analysis, and direct draggable on-canvas text-path handles.
+## Completed — standard desktop shell
+
+- Added conventional File, Edit, View, Design, Toolpaths, and Help menus with macOS-native and Windows/Linux in-window presentation.
+- Added persistent application settings, recent-project maintenance, keyboard-shortcut help, and About information while retaining the quick-access toolbar.
+- Kept the dark CNC workspace and mandatory safety checks; application preferences do not alter project files or exported machining data.

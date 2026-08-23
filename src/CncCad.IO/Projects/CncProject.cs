@@ -6,7 +6,7 @@ namespace CncCad.IO.Projects;
 
 public sealed class CncProject
 {
-    public const int CurrentVersion = 5;
+    public const int CurrentVersion = 7;
     public int Version { get; set; } = CurrentVersion;
     public CadDocument Document { get; set; } = new();
     public CamJob CamJob { get; set; } = new();

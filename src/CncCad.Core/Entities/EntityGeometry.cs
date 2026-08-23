@@ -65,7 +65,7 @@ public static class EntityGeometry
         ArcEntity arc => CopyBase(arc, new ArcEntity { Center = arc.Center, Radius = arc.Radius, StartAngleDegrees = arc.StartAngleDegrees, SweepAngleDegrees = arc.SweepAngleDegrees }),
         EllipseEntity ellipse => CopyBase(ellipse, new EllipseEntity { Center = ellipse.Center, RadiusX = ellipse.RadiusX, RadiusY = ellipse.RadiusY }),
         VectorPathEntity path => CopyBase(path,new VectorPathEntity{Figures=VectorPathGeometry.Clone(path.Figures)}),
-        TextEntity text => CopyBase(text,new TextEntity{Text=text.Text,FontFamily=text.FontFamily,FontStyle=text.FontStyle,SizeMm=text.SizeMm,LetterSpacingMm=text.LetterSpacingMm,LineSpacing=text.LineSpacing,Alignment=text.Alignment,Outlines=VectorPathGeometry.Clone(text.Outlines)}),
+        TextEntity text => CopyBase(text,new TextEntity{Text=text.Text,FontFamily=text.FontFamily,FontStyle=text.FontStyle,SizeMm=text.SizeMm,LetterSpacingMm=text.LetterSpacingMm,LineSpacing=text.LineSpacing,Alignment=text.Alignment,FontKind=text.FontKind,LayoutMode=text.LayoutMode,PathPlacement=new(){GuideEntityId=text.PathPlacement.GuideEntityId,StartOffset=text.PathPlacement.StartOffset,BaselineOffsetMm=text.PathPlacement.BaselineOffsetMm,ReverseDirection=text.PathPlacement.ReverseDirection,FlipSide=text.PathPlacement.FlipSide,KeepUpright=text.PathPlacement.KeepUpright,FitMode=text.PathPlacement.FitMode,GuideSnapshot=[..text.PathPlacement.GuideSnapshot]},GlyphAdvancesMm=[..text.GlyphAdvancesMm],SourceOutlines=VectorPathGeometry.Clone(text.SourceOutlines),Outlines=VectorPathGeometry.Clone(text.Outlines),Glyphs=text.Glyphs.Select(x=>new TextGlyphGeometry{Cluster=x.Cluster,AdvanceMm=x.AdvanceMm,Order=x.Order,SourceFigures=VectorPathGeometry.Clone(x.SourceFigures),PlacedFigures=VectorPathGeometry.Clone(x.PlacedFigures)}).ToList()}),
         _ => throw new NotSupportedException($"Cloning is not implemented for {entity.GetType().Name}.")
     };
 
@@ -96,5 +96,5 @@ public static class EntityGeometry
     };
 
     private static Point2D Mid(Point2D a, Point2D b) => new((a.X + b.X) / 2, (a.Y + b.Y) / 2);
-    private static T CopyBase<T>(CadEntity source, T target) where T : CadEntity { target.LayerId = source.LayerId;target.MaterialSheetId=source.MaterialSheetId; target.IsVisible = source.IsVisible; target.IsLocked = source.IsLocked; target.Transform = source.Transform; return target; }
+    private static T CopyBase<T>(CadEntity source, T target) where T : CadEntity { target.LayerId = source.LayerId;target.MaterialSheetId=source.MaterialSheetId;target.GroupId=source.GroupId;target.StrokeColor=source.StrokeColor; target.IsVisible = source.IsVisible; target.IsLocked = source.IsLocked; target.Transform = source.Transform; return target; }
 }

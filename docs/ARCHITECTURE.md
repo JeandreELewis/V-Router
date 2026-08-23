@@ -13,7 +13,7 @@
 - Toolpaths exist as typed moves before any G-code is produced.
 - Tools live in an application SQLite database. Each CAM operation stores an immutable tool snapshot so an existing job remains reproducible when the master library changes.
 - The canvas is one custom-rendered control to support large entity counts.
-- JSON project files use a version-3 `CncProject` envelope containing the CAD document, persistent `CamJob`, immutable machine snapshot and job fixtures. Version-1/2 documents migrate in memory, are marked as needing safety setup, and are written as version 3 on their next normal save. Calculated moves and preflight results remain transient.
+- JSON project files currently use a version-7 `CncProject` envelope containing the CAD document, persistent `CamJob`, nesting state, immutable machine snapshot and job fixtures. Version-1–6 documents migrate in memory and are written as version 7 on their next normal save. Calculated moves, playback, and preflight results remain transient.
 - Persistent CAM mutations automatically save an existing project file using a same-directory temporary file and atomic replacement. New jobs without a path retain changes in memory and explicitly request a project save; calculated toolpath moves and playback remain transient and are recalculated after reopening.
 - FreeCAD is an architectural and behavioral reference only. It is not linked, embedded, or used as a runtime, and its general-purpose CAD object model will not define this router-focused product. See `FREECAD_REFERENCE.md`.
 - Selection and hit testing use document coordinates in Core. Rendering translates pointer locations before invoking them; pixel tolerance is converted to document millimetres using viewport zoom.
@@ -58,3 +58,22 @@ Layer visibility and locking are document rules. Rendering and snapping exclude 
 Project format v5 persists profile tab definitions and nesting inputs/results. Ramped tabs are operation-owned CAM parameters: automatic positions are deterministic, manual positions use normalized contour distance, and calculated Z ramps remain transient toolpath moves. The ordinary playback, preflight, time-estimation, and postprocessor boundaries consume those moves without special controller behavior.
 
 `INestingOptimizer` is framework-independent. It consumes source CAD geometry and persisted part/sheet constraints, uses private Clipper-backed clearance collision checks, and scores deterministic candidates by sheet count, waste, then estimated rapid distance. Accepted layouts create new sheet-owned entity IDs and preserve source design geometry. Sheet-specific operations retain their material-sheet and source-geometry correlation through calculation and export.
+
+## CNC text, appearance, and engraving
+
+Project format v6 persists portable `TextEntity` source glyph geometry, rendered path-fitted geometry, glyph advances, guide linkage, vector color overrides, groups, and polymorphic engraving operations. System-font discovery and outline extraction are private Infrastructure adapters built on SkiaSharp; third-party types never cross the font contracts. A compact built-in centerline adapter provides open-stroke CNC lettering while the complete licensed JHF asset catalog remains a separate content task.
+
+Straight and path-fitted text remain editable until conversion. Path placement is calculated in Core from a persisted guide snapshot and native line/quadratic/cubic glyph figures. Conversion is an undoable replacement with grouped project-owned vector paths. Per-entity `StrokeColor` is an organizational CAD property only and never changes CAM semantics or G-code.
+
+Selection is rendered in screen pixels by redrawing selected geometry with a dark halo and bright yellow inner stroke; the dashed bounds rectangle is secondary guidance. Repeated clicks cycle overlapping editable geometry, while hidden and locked layers are excluded.
+
+`EngraveOperationDefinition` is persistent CAM state. Its calculator accepts open or closed line, polyline, arc, ellipse, native vector-path, and portable text strokes; curve flattening is tolerance controlled, disconnected glyph strokes are intentional, and each stroke completes its configured depth passes before a safe traverse. It uses the existing playback, safety, ordering, persistence, and postprocessor boundaries.
+
+Project format v7 adds per-glyph portable geometry and `VCarveOperationDefinition`. Glyph records preserve cluster, order, advance, source figures, and placed figures, allowing conversion to one grouped vector entity per glyph. Linked-guide deletion detaches lettering and deletes the guide as one undoable composite mutation.
+
+Single-tool V-carving uses the private Clipper adapter to produce deterministic inward offset rings. Ring distance and the snapshotted included angle/tip diameter determine Z; depth is capped by the operation maximum, with optional continued V-bit clearing at the capped depth. V-carving shares operation ordering, sheet ownership, playback, preflight, postprocessing, and stale invalidation with profile and engraving operations. It is a practical offset-envelope strategy, not a medial-axis or two-tool clearing implementation.
+## Desktop shell commands and preferences
+
+The desktop shell exposes the same working actions through a native macOS menu, an in-window Windows/Linux menu, the compact toolbar, and keyboard gestures. `ApplicationCommand` is the common command metadata boundary; availability remains derived from document, selection, CAM, and playback state rather than being embedded in menu presentation.
+
+Application preferences are per-user infrastructure data and never enter `CncProject`. They control startup focus, grid and snapping defaults, toolpath visibility, and accent presentation. Job dimensions, machine snapshots, CAM definitions, fixtures, safety inputs, and mandatory safety acknowledgement remain project/workflow concerns and cannot be overridden by preferences.

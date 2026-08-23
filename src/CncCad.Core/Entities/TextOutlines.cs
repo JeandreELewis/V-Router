@@ -3,7 +3,16 @@ using CncCad.Core.Geometry;
 namespace CncCad.Core.Entities;
 
 public sealed record TextOutlineRequest(string Text,string FontFamily,string FontStyle,double SizeMm,double LetterSpacingMm,double LineSpacing,TextAlignment Alignment,Point2D Origin);
-public sealed record TextOutlineResult(IReadOnlyList<VectorPathFigure> Outlines,IReadOnlyList<string> Warnings);
+public sealed record FontDescriptor(string Family,string Style,FontKind Kind,string Source,bool IsBundled,bool SupportsLatin=true,bool SupportsGreek=false,bool SupportsCyrillic=false);
+public sealed record FontCompatibility(bool IsValid,bool HasOpenContours,bool HasInternalIslands,bool HasSelfIntersections,double? MinimumFeatureMm,IReadOnlyList<string> Warnings);
+public sealed record FontCatalogEntry(FontDescriptor Descriptor,string LicenseId,string? LicensePath=null);
+public sealed record FontAssetMetadata(string Family,string Style,FontKind Kind,string Source,string Revision,string Sha256,string LicenseId,string LicensePath,string AssetPath,IReadOnlyList<string> Coverage);
+public sealed record FontBundleVerification(bool IsValid,IReadOnlyList<string> Errors);
+public enum FontCompatibilityIssueKind{MissingGlyph,OpenContour,InternalIsland,SelfIntersection,DuplicateStroke,NarrowFeature}
+public sealed record FontCompatibilityIssue(FontCompatibilityIssueKind Kind,string Message);
+public interface IFontCatalog{IReadOnlyList<FontCatalogEntry> Fonts{get;}FontCatalogEntry? Find(string family,string style);}
+public sealed record GeneratedGlyph(string Cluster,double AdvanceMm,IReadOnlyList<VectorPathFigure> Figures,int Order);
+public sealed record TextOutlineResult(IReadOnlyList<VectorPathFigure> Outlines,IReadOnlyList<string> Warnings,IReadOnlyList<double>? GlyphAdvancesMm=null,FontKind Kind=FontKind.Outline,IReadOnlyList<GeneratedGlyph>? Glyphs=null);
 public interface ITextOutlineService{TextOutlineResult Create(TextOutlineRequest request);}
 
 // Deterministic portable fallback used when a platform font outline provider is unavailable.

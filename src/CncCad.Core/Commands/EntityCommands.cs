@@ -114,3 +114,45 @@ public sealed class PolylineNodesCommand(PolylineEntity entity,IEnumerable<CncCa
     public string Description{get;}=description;public IReadOnlyCollection<Guid>AffectedEntityIds=>[entity.Id];
     public void Execute(){entity.Points=[.._after];entity.IsClosed=isClosed;}public void Undo(){entity.Points=[.._before];entity.IsClosed=_beforeClosed;}
 }
+
+public sealed class SetEntityColorCommand:IUndoableCommand,IEntityAffectingCommand
+{
+    private readonly CadEntity[] _entities;private readonly Dictionary<Guid,string?> _before;private readonly string? _after;
+    public SetEntityColorCommand(CadDocument document,IEnumerable<Guid> ids,string? color){var selected=ids.ToHashSet();_entities=document.Entities.Where(x=>selected.Contains(x.Id)).ToArray();_before=_entities.ToDictionary(x=>x.Id,x=>x.StrokeColor);_after=color;}
+    public string Description=>_after is null?"Use layer color":"Change vector color";public IReadOnlyCollection<Guid>AffectedEntityIds=>_entities.Select(x=>x.Id).ToArray();public void Execute(){foreach(var entity in _entities)entity.StrokeColor=_after;}public void Undo(){foreach(var entity in _entities)entity.StrokeColor=_before[entity.Id];}
+}
+
+public sealed class SetEntityGroupCommand:IUndoableCommand,IEntityAffectingCommand
+{
+    private readonly CadEntity[] _entities;private readonly Dictionary<Guid,Guid?> _before;private readonly Guid? _group;
+    public SetEntityGroupCommand(CadDocument document,IEnumerable<Guid> ids,Guid? group){var selected=ids.ToHashSet();_entities=document.Entities.Where(x=>selected.Contains(x.Id)).ToArray();_before=_entities.ToDictionary(x=>x.Id,x=>x.GroupId);_group=group;}
+    public string Description=>_group is null?"Ungroup vectors":"Group vectors";public IReadOnlyCollection<Guid>AffectedEntityIds=>_entities.Select(x=>x.Id).ToArray();public void Execute(){foreach(var entity in _entities)entity.GroupId=_group;}public void Undo(){foreach(var entity in _entities)entity.GroupId=_before[entity.Id];}
+}
+
+public sealed class EditTextEntityCommand : IUndoableCommand, IEntityAffectingCommand
+{
+    private readonly TextEntity _target;
+    private readonly TextEntity _before;
+    private readonly TextEntity _after;
+
+    public EditTextEntityCommand(TextEntity target, TextEntity replacement)
+    {
+        _target = target;
+        _before = (TextEntity)EntityGeometry.Clone(target);
+        _after = (TextEntity)EntityGeometry.Clone(replacement);
+    }
+
+    public string Description => "Edit text";
+    public IReadOnlyCollection<Guid> AffectedEntityIds => [_target.Id];
+    public void Execute() => Apply(_after);
+    public void Undo() => Apply(_before);
+
+    private void Apply(TextEntity source)
+    {
+        _target.Text=source.Text;_target.FontFamily=source.FontFamily;_target.FontStyle=source.FontStyle;
+        _target.SizeMm=source.SizeMm;_target.LetterSpacingMm=source.LetterSpacingMm;_target.LineSpacing=source.LineSpacing;
+        _target.Alignment=source.Alignment;_target.FontKind=source.FontKind;_target.LayoutMode=source.LayoutMode;
+        _target.PathPlacement=new(){GuideEntityId=source.PathPlacement.GuideEntityId,StartOffset=source.PathPlacement.StartOffset,BaselineOffsetMm=source.PathPlacement.BaselineOffsetMm,ReverseDirection=source.PathPlacement.ReverseDirection,FlipSide=source.PathPlacement.FlipSide,KeepUpright=source.PathPlacement.KeepUpright,FitMode=source.PathPlacement.FitMode,GuideSnapshot=[..source.PathPlacement.GuideSnapshot]};
+        _target.GlyphAdvancesMm=[..source.GlyphAdvancesMm];_target.SourceOutlines=VectorPathGeometry.Clone(source.SourceOutlines);_target.Outlines=VectorPathGeometry.Clone(source.Outlines);_target.Glyphs=source.Glyphs.Select(x=>new TextGlyphGeometry{Cluster=x.Cluster,AdvanceMm=x.AdvanceMm,Order=x.Order,SourceFigures=VectorPathGeometry.Clone(x.SourceFigures),PlacedFigures=VectorPathGeometry.Clone(x.PlacedFigures)}).ToList();
+    }
+}

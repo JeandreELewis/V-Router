@@ -52,7 +52,7 @@ public class MeasurementAndPaletteTests
     public void DefaultPalette_ContainsEveryToolExactlyOnce()
     {
         var tools = ToolPaletteItem.DefaultDrawingTools;
-        Assert.Equal(6, tools.Count); Assert.Equal(6, tools.Select(item => item.Tool).Distinct().Count()); Assert.All(tools, item => { Assert.False(string.IsNullOrWhiteSpace(item.IconData)); Assert.False(string.IsNullOrWhiteSpace(item.Tooltip)); });
+        Assert.Equal(7, tools.Count); Assert.Equal(7, tools.Select(item => item.Tool).Distinct().Count()); Assert.All(tools, item => { Assert.False(string.IsNullOrWhiteSpace(item.IconData)); Assert.False(string.IsNullOrWhiteSpace(item.Tooltip)); });
         Assert.Equal(Enum.GetValues<CanvasTool>().Order(), tools.Select(item => item.Tool).Order());
     }
 

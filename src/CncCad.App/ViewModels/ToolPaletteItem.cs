@@ -12,6 +12,7 @@ public sealed record ToolPaletteItem(CanvasTool Tool, string Label, string IconD
         Create(CanvasTool.Polyline, "Polyline", "M2,16 L7,6 12,13 18,3", "Draw a connected polyline"),
         Create(CanvasTool.Rectangle, "Rectangle", "M3,4 L17,4 17,16 3,16 Z", "Draw a rectangle corner to corner"),
         Create(CanvasTool.Circle, "Circle", "M10,2 A8,8 0 1 1 9.999,2", "Draw a circle from center and radius"),
-        Create(CanvasTool.Arc, "3-Point Arc", "M2,15 C5,4 15,4 18,15", "Draw an arc through three points")
+        Create(CanvasTool.Arc, "3-Point Arc", "M2,15 C5,4 15,4 18,15", "Draw an arc through three points"),
+        Create(CanvasTool.Trim, "Trim", "M3,5 A3,3 0 1 0 9,5 M3,15 A3,3 0 1 0 9,15 M8,7 L19,17 M8,13 L19,3", "Scissors: click a crossing-bounded vector portion to remove it")
     ];
 }

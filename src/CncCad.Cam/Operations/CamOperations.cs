@@ -42,11 +42,15 @@ public sealed record ToolSnapshot
     public double? OverallLengthMm { get; init; }
     public double? ShankDiameterMm { get; init; }
     public double? StickOutMm { get; init; }
-    public static ToolSnapshot FromTool(CncTool tool) => new() { SourceToolId = tool.Id, Name = tool.Name, ToolNumber = tool.ToolNumber, Type = tool.Type, DiameterMm = tool.DiameterMm, FeedRateMmPerMin = tool.FeedRateMmPerMin, PlungeRateMmPerMin = tool.PlungeRateMmPerMin, SpindleRpm = tool.SpindleRpm, StepDownMm = tool.StepDownMm, CuttingLengthMm = tool.CuttingLengthMm, OverallLengthMm = tool.OverallLengthMm, ShankDiameterMm = tool.ShankDiameterMm, StickOutMm = tool.StickOutMm };
+    public double? VBitAngleDegrees { get; init; }
+    public double? TipDiameterMm { get; init; }
+    public static ToolSnapshot FromTool(CncTool tool) => new() { SourceToolId = tool.Id, Name = tool.Name, ToolNumber = tool.ToolNumber, Type = tool.Type, DiameterMm = tool.DiameterMm, FeedRateMmPerMin = tool.FeedRateMmPerMin, PlungeRateMmPerMin = tool.PlungeRateMmPerMin, SpindleRpm = tool.SpindleRpm, StepDownMm = tool.StepDownMm, CuttingLengthMm = tool.CuttingLengthMm, OverallLengthMm = tool.OverallLengthMm, ShankDiameterMm = tool.ShankDiameterMm, StickOutMm = tool.StickOutMm,VBitAngleDegrees=tool.VBitAngleDegrees,TipDiameterMm=tool.TipDiameterMm };
 }
 
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(ProfileOperationDefinition), "profile")]
+[JsonDerivedType(typeof(EngraveOperationDefinition), "engrave")]
+[JsonDerivedType(typeof(VCarveOperationDefinition), "vcarve")]
 public abstract class CamOperationDefinition
 {
     public Guid Id { get; init; } = Guid.NewGuid();
@@ -80,6 +84,21 @@ public sealed class ProfileOperationDefinition : CamOperationDefinition
     public Guid? MaterialSheetId { get; set; }
     public ProfileTabSettings Tabs { get; set; } = new();
     public ProfileOperationDefinition Duplicate() => new() { Name = $"{Name} Copy", GeometryIds = [.. GeometryIds], Tool = Tool with { }, IsEnabled = IsEnabled, Order = Order + 1, Side = Side, Direction = Direction, StartDepthMm = StartDepthMm, CutDepthMm = CutDepthMm, PassDepthMm = PassDepthMm, SafeZMm = SafeZMm, FeedRateMmPerMin = FeedRateMmPerMin, PlungeRateMmPerMin = PlungeRateMmPerMin, SpindleRpm = SpindleRpm,MaterialSheetId=MaterialSheetId,Tabs=Tabs.Copy() };
+}
+public enum EngraveDirection { Forward, Reverse, Optimize }
+public sealed class EngraveOperationDefinition:CamOperationDefinition
+{
+    [JsonIgnore]public override string DetailSummary=>$"Engrave · {GeometryIds.Count} vector{(GeometryIds.Count==1?"":"s")} · {CutDepthMm:0.###} mm · {PassCount} passes";
+    [JsonIgnore]public int PassCount=>PassDepthMm>0&&CutDepthMm>StartDepthMm?(int)Math.Ceiling((CutDepthMm-StartDepthMm)/PassDepthMm):0;
+    public EngraveDirection Direction{get;set;}=EngraveDirection.Optimize;public double StartDepthMm{get;set;}public double CutDepthMm{get;set;}=1;public double PassDepthMm{get;set;}=1;public double SafeZMm{get;set;}=5;public double FeedRateMmPerMin{get;set;}=1200;public double PlungeRateMmPerMin{get;set;}=400;public int SpindleRpm{get;set;}=18000;public Guid? MaterialSheetId{get;set;}
+    public EngraveOperationDefinition Duplicate()=>new(){Name=$"{Name} Copy",GeometryIds=[..GeometryIds],Tool=Tool with{},IsEnabled=IsEnabled,Order=Order+1,Direction=Direction,StartDepthMm=StartDepthMm,CutDepthMm=CutDepthMm,PassDepthMm=PassDepthMm,SafeZMm=SafeZMm,FeedRateMmPerMin=FeedRateMmPerMin,PlungeRateMmPerMin=PlungeRateMmPerMin,SpindleRpm=SpindleRpm,MaterialSheetId=MaterialSheetId};
+}
+public sealed class VCarveOperationDefinition:CamOperationDefinition
+{
+    [JsonIgnore]public override string DetailSummary=>$"V-Carve · {GeometryIds.Count} contour{(GeometryIds.Count==1?"":"s")} · max {MaximumDepthMm:0.###} mm";
+    public double MaximumDepthMm{get;set;}=3;public bool ClearFlatRegions{get;set;}=true;public double OffsetStepOverMm{get;set;}=.5;public double SafeZMm{get;set;}=5;public double FeedRateMmPerMin{get;set;}=1000;public double PlungeRateMmPerMin{get;set;}=300;public int SpindleRpm{get;set;}=18000;public Guid? MaterialSheetId{get;set;}
+    [JsonIgnore]public double WidthAtMaximumDepthMm=>(Tool.TipDiameterMm??0)+2*MaximumDepthMm*Math.Tan((Tool.VBitAngleDegrees??0)*Math.PI/360);
+    public VCarveOperationDefinition Duplicate()=>new(){Name=$"{Name} Copy",GeometryIds=[..GeometryIds],Tool=Tool with{},IsEnabled=IsEnabled,Order=Order+1,MaximumDepthMm=MaximumDepthMm,ClearFlatRegions=ClearFlatRegions,OffsetStepOverMm=OffsetStepOverMm,SafeZMm=SafeZMm,FeedRateMmPerMin=FeedRateMmPerMin,PlungeRateMmPerMin=PlungeRateMmPerMin,SpindleRpm=SpindleRpm,MaterialSheetId=MaterialSheetId};
 }
 
 public sealed class CamJob

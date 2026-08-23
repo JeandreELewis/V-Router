@@ -1,0 +1,27 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CncCad.App.Views.SettingsWindow" Width="560" Height="620" CanResize="False"
+        WindowStartupLocation="CenterOwner" Background="#181E23" Title="CNC CAD Settings">
+  <Grid RowDefinitions="Auto,*,Auto">
+    <Border Background="#20282E" Padding="22,17" BorderBrush="#35414A" BorderThickness="0,0,0,1">
+      <StackPanel><TextBlock Text="Application Settings" FontSize="22" FontWeight="SemiBold"/><TextBlock Text="Defaults for new sessions; project machining data is unaffected." Foreground="#9AA9B4"/></StackPanel>
+    </Border>
+    <ScrollViewer Grid.Row="1"><StackPanel Margin="22" Spacing="13">
+      <TextBlock Classes="heading" Text="WORKSPACE"/>
+      <Grid ColumnDefinitions="190,*"><TextBlock Text="Startup panel" VerticalAlignment="Center"/><ComboBox x:Name="StartupPicker" Grid.Column="1"/></Grid>
+      <CheckBox x:Name="ShowGridCheck" Content="Show drawing grid"/>
+      <Grid ColumnDefinitions="190,*"><TextBlock Text="Default grid spacing (mm)" VerticalAlignment="Center"/><NumericUpDown x:Name="GridSpacingInput" Grid.Column="1" Minimum="0.1" Maximum="1000"/></Grid>
+      <CheckBox x:Name="SnappingCheck" Content="Enable snapping"/>
+      <WrapPanel><CheckBox x:Name="SnapGridCheck" Content="Grid" Margin="0,0,16,0"/><CheckBox x:Name="EndpointCheck" Content="Endpoint" Margin="0,0,16,0"/><CheckBox x:Name="MidpointCheck" Content="Midpoint" Margin="0,0,16,0"/><CheckBox x:Name="CenterCheck" Content="Center"/></WrapPanel>
+      <CheckBox x:Name="ToolpathsCheck" Content="Show toolpaths when available"/>
+      <TextBlock Classes="heading" Text="APPEARANCE" Margin="0,14,0,2"/>
+      <Grid ColumnDefinitions="190,*"><TextBlock Text="Accent" VerticalAlignment="Center"/><ComboBox x:Name="AccentPicker" Grid.Column="1"/></Grid>
+      <TextBlock Text="The machining workspace remains dark. Accent changes apply to active and primary controls." Foreground="#91A1AD" TextWrapping="Wrap"/>
+      <TextBlock Classes="heading" Text="CONFIRMATIONS" Margin="0,14,0,2"/>
+      <CheckBox x:Name="UnsavedCheck" Content="Confirm before replacing an unsaved job"/>
+      <Border Classes="guidance"><TextBlock Text="Safety preflight errors and warning acknowledgement are always enforced and cannot be disabled." TextWrapping="Wrap" Foreground="#E4B66A"/></Border>
+    </StackPanel></ScrollViewer>
+    <Border Grid.Row="2" Background="#20282E" Padding="16" BorderBrush="#35414A" BorderThickness="0,1,0,0">
+      <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="9"><Button Content="Restore Defaults" Click="Defaults_Click"/><Button Grid.Column="2" Content="Cancel" Click="Cancel_Click"/><Button Grid.Column="3" Classes="primary" Content="Save Settings" Click="Save_Click"/></Grid>
+    </Border>
+  </Grid>
+</Window>

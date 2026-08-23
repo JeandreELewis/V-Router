@@ -17,6 +17,8 @@ public abstract class CadEntity
     public Guid Id { get; init; } = Guid.NewGuid();
     public Guid LayerId { get; set; }
     public Guid? MaterialSheetId { get; set; }
+    public Guid? GroupId { get; set; }
+    public string? StrokeColor { get; set; }
     public bool IsVisible { get; set; } = true;
     public bool IsLocked { get; set; }
     public Matrix2D Transform { get; set; } = Matrix2D.Identity;
@@ -90,6 +92,24 @@ public sealed class VectorPathEntity : CadEntity
     public override BoundingBox GetBounds() => EntityGeometry.WorldBounds(this);
 }
 public enum TextAlignment { Left, Center, Right }
+public enum FontKind { Outline, SingleLine, Stencil }
+public enum TextLayoutMode { Straight, FollowPath }
+public enum TextFitMode { Natural, FitSpacing }
+public sealed class TextPathPlacement
+{
+    public Guid? GuideEntityId { get; set; }
+    public double StartOffset { get; set; }
+    public double BaselineOffsetMm { get; set; }
+    public bool ReverseDirection { get; set; }
+    public bool FlipSide { get; set; }
+    public bool KeepUpright { get; set; } = true;
+    public TextFitMode FitMode { get; set; }
+    public List<Point2D> GuideSnapshot { get; set; } = [];
+}
+public sealed class TextGlyphGeometry
+{
+    public string Cluster{get;set;}="";public double AdvanceMm{get;set;}public int Order{get;set;}public List<VectorPathFigure> SourceFigures{get;set;}=[];public List<VectorPathFigure> PlacedFigures{get;set;}=[];
+}
 public sealed class TextEntity : CadEntity
 {
     public string Text { get; set; } = "Text";
@@ -99,6 +119,12 @@ public sealed class TextEntity : CadEntity
     public double LetterSpacingMm { get; set; }
     public double LineSpacing { get; set; } = 1.2;
     public TextAlignment Alignment { get; set; }
+    public FontKind FontKind { get; set; }
+    public TextLayoutMode LayoutMode { get; set; }
+    public TextPathPlacement PathPlacement { get; set; } = new();
+    public List<double> GlyphAdvancesMm { get; set; } = [];
+    public List<VectorPathFigure> SourceOutlines { get; set; } = [];
     public List<VectorPathFigure> Outlines { get; set; } = [];
+    public List<TextGlyphGeometry> Glyphs { get; set; } = [];
     public override BoundingBox GetBounds() => EntityGeometry.WorldBounds(this);
 }

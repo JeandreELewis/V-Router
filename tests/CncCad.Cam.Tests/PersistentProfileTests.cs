@@ -1,6 +1,7 @@
 using CncCad.Cam.Operations;
 using CncCad.Cam.Profile;
 using CncCad.Cam.Toolpaths;
+using CncCad.Cam.Tools;
 using CncCad.Core.Entities;
 using CncCad.Core.Geometry;
 
@@ -8,6 +9,24 @@ namespace CncCad.Cam.Tests;
 
 public class PersistentProfileTests
 {
+    [Theory]
+    [InlineData(30)]
+    [InlineData(60)]
+    [InlineData(90)]
+    public void VCarve_UsesVariableDepthAndHonorsMaximum(double angle)
+    {
+        var rectangle=new RectangleEntity{Width=40,Height=20};var operation=new VCarveOperationDefinition{GeometryIds=[rectangle.Id],Tool=new(){Name=$"{angle} degree V-bit",Type=ToolType.VBit,DiameterMm=12,VBitAngleDegrees=angle,TipDiameterMm=.2},MaximumDepthMm=2,OffsetStepOverMm=.5,ClearFlatRegions=true,SafeZMm=5,FeedRateMmPerMin=900,PlungeRateMmPerMin=250};var result=new VCarveOperationCalculator().Calculate(operation,new Dictionary<Guid,CadEntity>{{rectangle.Id,rectangle}});Assert.True(result.Success,string.Join("; ",result.Errors.Select(x=>x.Message)));var depths=result.Toolpath!.Moves.OfType<LinearMove>().Select(x=>-x.Z).Where(x=>x>0).Distinct().Order().ToArray();Assert.NotEmpty(depths);Assert.True(depths[^1]<=2+1e-9);Assert.True(depths.Length>1);
+    }
+    [Fact]
+    public void VCarve_RejectsSingleLineTextAndMissingToolAngle()
+    {
+        var text=new TextEntity{FontKind=FontKind.SingleLine,Outlines=[new(){Start=new(0,0),Segments=[new LinePathSegment(new(10,0))]}]};var operation=new VCarveOperationDefinition{GeometryIds=[text.Id],Tool=new(){Type=ToolType.VBit,DiameterMm=6},MaximumDepthMm=2,OffsetStepOverMm=.5};var result=new VCarveOperationCalculator().Calculate(operation,new Dictionary<Guid,CadEntity>{{text.Id,text}});Assert.False(result.Success);Assert.Contains(result.Errors,x=>x.Code=="angle");Assert.Contains(result.Errors,x=>x.Message.Contains("Single-line"));
+    }
+    [Fact]
+    public void Engraving_OpenCenterlines_GeneratesIndependentDepthPasses()
+    {
+        var line=new LineEntity{Start=new(0,0),End=new(20,0)};var path=new PolylineEntity{Points=[new(30,0),new(30,10),new(40,10)]};var operation=new EngraveOperationDefinition{Name="Lettering",GeometryIds=[line.Id,path.Id],Tool=new(){DiameterMm=1,Name="Engraver",FeedRateMmPerMin=800,PlungeRateMmPerMin=300,StepDownMm=.5},CutDepthMm=1,PassDepthMm=.5,SafeZMm=5,FeedRateMmPerMin=800,PlungeRateMmPerMin=300};var result=new EngraveOperationCalculator().Calculate(operation,new Dictionary<Guid,CadEntity>{{line.Id,line},{path.Id,path}});Assert.True(result.Success);Assert.Equal(6,result.Toolpath!.Moves.OfType<RapidMove>().Count());Assert.Contains(result.Toolpath.Moves.OfType<LinearMove>(),x=>Math.Abs(x.Z+.5)<1e-9);Assert.Contains(result.Toolpath.Moves.OfType<LinearMove>(),x=>Math.Abs(x.Z+1)<1e-9);
+    }
     private static ProfileOperationDefinition Operation(CadEntity entity, ProfileSide side = ProfileSide.Outside) => new()
     {
         GeometryIds = [entity.Id], Side = side, Tool = new ToolSnapshot { Name = "6mm", DiameterMm = 6 },

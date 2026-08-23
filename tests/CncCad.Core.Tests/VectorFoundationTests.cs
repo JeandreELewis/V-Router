@@ -2,11 +2,45 @@ using System.Text;
 using CncCad.Core.Entities;
 using CncCad.Core.Geometry;
 using CncCad.IO.Import;
+using CncCad.Infrastructure.Fonts;
+using CncCad.Core.Commands;
+using CncCad.Core.Documents;
 
 namespace CncCad.Core.Tests;
 
 public class VectorFoundationTests
 {
+    [Fact]
+    public void DesktopFontCatalog_ProvidesSystemAndCncCenterlineFonts()
+    {
+        var catalog=new DesktopFontCatalog();Assert.Contains(catalog.Fonts,x=>x.Descriptor.Kind==FontKind.SingleLine);Assert.Contains(catalog.Fonts,x=>!x.Descriptor.IsBundled);var system=catalog.Fonts.First(x=>!x.Descriptor.IsBundled);var result=new SkiaTextOutlineService().Create(new("A",system.Descriptor.Family,system.Descriptor.Style,12,0,1.2,TextAlignment.Left,new(0,0)));Assert.NotEmpty(result.Outlines);Assert.Equal(FontKind.Outline,result.Kind);
+    }
+
+    [Fact]
+    public void HersheyText_ProducesOpenEngravingStrokes()
+    {
+        var result=new SkiaTextOutlineService().Create(new("ROUTER","Hershey Simplex","Regular",10,1,1.2,TextAlignment.Left,new(0,0)));Assert.Equal(FontKind.SingleLine,result.Kind);Assert.NotEmpty(result.Outlines);Assert.All(result.Outlines,x=>Assert.False(x.IsClosed));Assert.Equal(6,result.GlyphAdvancesMm!.Count);
+    }
+    [Fact]
+    public void TextPathLayout_FitsNativeCurvesAndPreservesPortableSource()
+    {
+        var source=new[]{new VectorPathFigure{Start=new(0,0),IsClosed=true,Segments=[new CubicPathSegment(new(2,0),new(3,4),new(5,4)),new LinePathSegment(new(0,0))]}};var guide=Enumerable.Range(0,33).Select(i=>new Point2D(50+30*Math.Cos(i*Math.PI/32),50+30*Math.Sin(i*Math.PI/32))).ToArray();var placement=new TextPathPlacement{BaselineOffsetMm=3,FitMode=TextFitMode.Natural};var fitted=TextPathLayout.Fit(source,guide,placement);Assert.Single(fitted);Assert.IsType<CubicPathSegment>(fitted[0].Segments[0]);Assert.NotEqual(source[0].Start,fitted[0].Start);
+    }
+
+    [Fact]
+    public void EntityClone_PreservesColorGroupAndEditableTextMetadata()
+    {
+        var group=Guid.NewGuid();var text=new TextEntity{LayerId=Guid.NewGuid(),StrokeColor="#FF00AA",GroupId=group,Text="CNC",FontKind=FontKind.Stencil,LayoutMode=TextLayoutMode.FollowPath,PathPlacement=new(){GuideEntityId=Guid.NewGuid(),BaselineOffsetMm=2},GlyphAdvancesMm=[4,5,6],SourceOutlines=[new(){Start=new(0,0)}],Outlines=[new(){Start=new(1,1)}]};var clone=Assert.IsType<TextEntity>(EntityGeometry.Clone(text));Assert.Equal(text.StrokeColor,clone.StrokeColor);Assert.Equal(group,clone.GroupId);Assert.Equal(FontKind.Stencil,clone.FontKind);Assert.Equal(3,clone.GlyphAdvancesMm.Count);Assert.NotSame(text.Outlines,clone.Outlines);
+    }
+    [Fact]
+    public void TextAndAppearanceCommands_AreUndoable()
+    {
+        var document=new CadDocument();var text=new TextEntity{LayerId=document.ActiveLayerId,Text="Old",Outlines=[new(){Start=new(0,0)}]};document.Entities.Add(text);
+        var edited=(TextEntity)EntityGeometry.Clone(text);edited.Text="New";edited.StrokeColor="#FF0000";edited.Outlines=[new(){Start=new(4,5)}];
+        var edit=new EditTextEntityCommand(text,edited);edit.Execute();Assert.Equal("New",text.Text);edit.Undo();Assert.Equal("Old",text.Text);
+        var color=new SetEntityColorCommand(document,[text.Id],"#00AAFF");color.Execute();Assert.Equal("#00AAFF",text.StrokeColor);color.Undo();Assert.Null(text.StrokeColor);
+        var group=Guid.NewGuid();var grouping=new SetEntityGroupCommand(document,[text.Id],group);grouping.Execute();Assert.Equal(group,text.GroupId);grouping.Undo();Assert.Null(text.GroupId);
+    }
     [Fact]
     public void CubicPath_HasExactExtremaAndToleranceControlledFlattening()
     {

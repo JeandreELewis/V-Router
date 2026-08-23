@@ -5,6 +5,7 @@ namespace CncCad.Core.Entities;
 public static class VectorPathGeometry
 {
     public static List<VectorPathFigure> Clone(IEnumerable<VectorPathFigure> figures)=>figures.Select(f=>new VectorPathFigure{Start=f.Start,IsClosed=f.IsClosed,Segments=f.Segments.Select(Clone).ToList()}).ToList();
+    public static List<VectorPathFigure> Transform(IEnumerable<VectorPathFigure> figures,Matrix2D matrix)=>figures.Select(f=>new VectorPathFigure{Start=matrix.Transform(f.Start),IsClosed=f.IsClosed,Segments=f.Segments.Select(s=>(VectorPathSegment)(s switch{LinePathSegment l=>new LinePathSegment(matrix.Transform(l.End)),QuadraticPathSegment q=>new QuadraticPathSegment(matrix.Transform(q.Control),matrix.Transform(q.End)),CubicPathSegment c=>new CubicPathSegment(matrix.Transform(c.Control1),matrix.Transform(c.Control2),matrix.Transform(c.End)),_=>throw new NotSupportedException()})).ToList()}).ToList();
     private static VectorPathSegment Clone(VectorPathSegment s)=>s switch{LinePathSegment l=>new LinePathSegment(l.End),QuadraticPathSegment q=>new QuadraticPathSegment(q.Control,q.End),CubicPathSegment c=>new CubicPathSegment(c.Control1,c.Control2,c.End),_=>throw new NotSupportedException()};
     public static IReadOnlyList<Point2D> Flatten(IEnumerable<VectorPathFigure> figures,double tolerance)
     {

@@ -8,18 +8,20 @@ public sealed class SelectionModel
     private readonly HashSet<Guid> _ids = [];
     public IReadOnlySet<Guid> Ids => _ids;
     public int Count => _ids.Count;
+    public Guid? PrimaryId { get; private set; }
     public bool Contains(Guid id) => _ids.Contains(id);
-    public void Clear() => _ids.Clear();
-    public void Set(Guid id) { _ids.Clear(); _ids.Add(id); }
-    public void Add(Guid id) => _ids.Add(id);
-    public void Toggle(Guid id) { if (!_ids.Remove(id)) _ids.Add(id); }
-    public void Set(IEnumerable<Guid> ids) { _ids.Clear(); _ids.UnionWith(ids); }
+    public void Clear() { _ids.Clear();PrimaryId=null; }
+    public void Set(Guid id) { _ids.Clear();_ids.Add(id);PrimaryId=id; }
+    public void Add(Guid id) { _ids.Add(id);PrimaryId=id; }
+    public void Toggle(Guid id) { if(!_ids.Remove(id)){_ids.Add(id);PrimaryId=id;}else if(PrimaryId==id)PrimaryId=_ids.FirstOrDefault() is var next&&next!=Guid.Empty?next:null; }
+    public void Set(IEnumerable<Guid> ids) { _ids.Clear();_ids.UnionWith(ids);PrimaryId=_ids.FirstOrDefault() is var next&&next!=Guid.Empty?next:null; }
 }
 
 public static class EntityHitTester
 {
     public static CadEntity? HitTest(IEnumerable<CadEntity> entities, Point2D point, double toleranceMm) =>
         entities.Where(e => e.IsVisible && !e.IsLocked).Reverse().FirstOrDefault(e => IsHit(e, point, toleranceMm));
+    public static IReadOnlyList<CadEntity> HitTestAll(IEnumerable<CadEntity> entities,Point2D point,double toleranceMm)=>entities.Where(e=>e.IsVisible&&!e.IsLocked&&IsHit(e,point,toleranceMm)).Reverse().ToArray();
 
     public static IEnumerable<Guid> Inside(IEnumerable<CadEntity> entities, BoundingBox area) =>
         entities.Where(e => e.IsVisible && !e.IsLocked).Where(e => Contains(area, e.GetBounds())).Select(e => e.Id);

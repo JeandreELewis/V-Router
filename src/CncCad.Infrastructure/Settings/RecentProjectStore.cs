@@ -12,6 +12,10 @@ public interface IRecentProjectStore
     Task<IReadOnlyList<RecentProject>> GetAsync(CancellationToken cancellationToken = default);
     Task AddAsync(string path, CancellationToken cancellationToken = default);
     Task RemoveAsync(string path, CancellationToken cancellationToken = default);
+    async Task ClearAsync(CancellationToken cancellationToken = default)
+    {
+        foreach (var project in await GetAsync(cancellationToken)) await RemoveAsync(project.Path, cancellationToken);
+    }
 }
 
 public sealed class JsonRecentProjectStore(string settingsPath) : IRecentProjectStore
@@ -35,6 +39,8 @@ public sealed class JsonRecentProjectStore(string settingsPath) : IRecentProject
 
     public async Task RemoveAsync(string path, CancellationToken cancellationToken = default) =>
         await WriteAsync((await GetAsync(cancellationToken)).Where(p => !string.Equals(p.Path, path, StringComparison.OrdinalIgnoreCase)), cancellationToken);
+
+    public Task ClearAsync(CancellationToken cancellationToken = default) => WriteAsync([], cancellationToken);
 
     private async Task WriteAsync(IEnumerable<RecentProject> projects, CancellationToken cancellationToken)
     {

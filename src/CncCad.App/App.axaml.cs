@@ -9,6 +9,7 @@ using CncCad.App.Views;
 using CncCad.Infrastructure.Logging;
 using CncCad.Infrastructure.Persistence;
 using CncCad.Infrastructure.Settings;
+using CncCad.Infrastructure.Fonts;
 using Microsoft.EntityFrameworkCore;
 
 namespace CncCad.App;
@@ -30,8 +31,9 @@ public partial class App : Application
             var options = new DbContextOptionsBuilder<ToolLibraryDbContext>().UseSqlite($"Data Source={Path.Combine(dataDirectory, "cnc-cad.db")}").Options;
             var factory = new ToolLibraryContextFactory(options);
             var recentProjects = new JsonRecentProjectStore(Path.Combine(dataDirectory, "recent-projects.json"));
-            var viewModel = new MainWindowViewModel(new SqliteToolLibrary(factory), recentProjects, new SqliteMachineProfileRepository(factory));
-            desktop.MainWindow = new MainWindow
+            var preferences = new JsonApplicationPreferencesStore(Path.Combine(dataDirectory, "preferences.json"));
+            var viewModel = new MainWindowViewModel(new SqliteToolLibrary(factory), recentProjects, new SqliteMachineProfileRepository(factory),new SkiaTextOutlineService(),new DesktopFontCatalog());
+            desktop.MainWindow = new MainWindow(preferences)
             {
                 DataContext = viewModel,
             };
