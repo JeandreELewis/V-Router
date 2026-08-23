@@ -1,0 +1,24 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:vm="using:CncCad.App.ViewModels" x:Class="CncCad.App.Views.JobSetupWindow" x:DataType="vm:JobSetupViewModel" Width="650" Height="760" CanResize="False" WindowStartupLocation="CenterOwner" Background="#181E23" Title="New CNC Job">
+  <Grid RowDefinitions="Auto,*,Auto">
+    <Border Background="#20282E" Padding="24,20" BorderBrush="#35414A" BorderThickness="0,0,0,1"><StackPanel><TextBlock Text="Create a new CNC job" FontSize="24" FontWeight="SemiBold"/><TextBlock Text="Define the stock and work zero before drawing." Foreground="#9AA9B4" Margin="0,5,0,0"/></StackPanel></Border>
+    <ScrollViewer Grid.Row="1"><StackPanel Margin="24,20" Spacing="9">
+      <TextBlock Text="Job name"/><TextBox Text="{Binding JobName}" PlaceholderText="e.g. Cabinet side"/>
+      <TextBlock Text="MATERIAL" Classes="heading" Margin="0,12,0,3"/>
+      <Grid ColumnDefinitions="*,*,*" ColumnSpacing="12"><StackPanel><TextBlock Text="Width (mm)"/><NumericUpDown Value="{Binding WidthMm}" Minimum="0.1" Maximum="100000" Increment="10"/></StackPanel><StackPanel Grid.Column="1"><TextBlock Text="Height (mm)"/><NumericUpDown Value="{Binding HeightMm}" Minimum="0.1" Maximum="100000" Increment="10"/></StackPanel><StackPanel Grid.Column="2"><TextBlock Text="Thickness (mm)"/><NumericUpDown Value="{Binding ThicknessMm}" Minimum="0.1" Maximum="10000"/></StackPanel></Grid>
+      <TextBlock Text="WORK ZERO &amp; CLEARANCE" Classes="heading" Margin="0,12,0,3"/>
+      <TextBlock Text="XY datum position" FontWeight="SemiBold"/>
+      <TextBlock Text="Choose where machine X0 Y0 sits on the material." Foreground="#91A1AD" FontSize="11"/>
+      <ListBox ItemsSource="{Binding OriginChoices}" SelectedItem="{Binding SelectedOriginChoice}" Background="Transparent" BorderThickness="0" Padding="0">
+        <ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="3"/></ItemsPanelTemplate></ListBox.ItemsPanel>
+        <ListBox.Styles><Style Selector="ListBoxItem"><Setter Property="Height" Value="66"/><Setter Property="Margin" Value="3"/><Setter Property="Padding" Value="5"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Background" Value="#252E34"/><Setter Property="BorderBrush" Value="#3A4851"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="6"/></Style><Style Selector="ListBoxItem:selected"><Setter Property="Background" Value="#174E69"/><Setter Property="BorderBrush" Value="#55C7F4"/><Setter Property="BorderThickness" Value="2"/></Style></ListBox.Styles>
+        <ListBox.ItemTemplate><DataTemplate x:DataType="vm:OriginChoice"><StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"><TextBlock Text="{Binding Marker}" FontSize="15" Foreground="#75D8FF" HorizontalAlignment="Center"/><TextBlock Text="{Binding Label}" FontSize="10" HorizontalAlignment="Center"/></StackPanel></DataTemplate></ListBox.ItemTemplate>
+      </ListBox>
+      <Grid ColumnDefinitions="*,*" ColumnSpacing="12"><StackPanel><TextBlock Text="Datum offset X (mm)"/><NumericUpDown Value="{Binding OriginOffsetXmm}" Minimum="-100000" Maximum="100000"/></StackPanel><StackPanel Grid.Column="1"><TextBlock Text="Datum offset Y (mm)"/><NumericUpDown Value="{Binding OriginOffsetYmm}" Minimum="-100000" Maximum="100000"/></StackPanel></Grid>
+      <TextBlock Text="Offsets move X0/Y0 from the selected point. Positive X is right; positive Y is up." Foreground="#91A1AD" FontSize="10" TextWrapping="Wrap"/>
+      <StackPanel><TextBlock Text="Z zero"/><ComboBox ItemsSource="{Binding ZZeroPositions}" SelectedItem="{Binding ZZero}"/></StackPanel>
+      <TextBlock Text="Safe Z (mm)"/><NumericUpDown Value="{Binding SafeZMm}" Minimum="0.1" Maximum="1000"/>
+      <TextBlock Text="{Binding ValidationMessage}" Foreground="#FF9C9C" TextWrapping="Wrap" MinHeight="22"/>
+    </StackPanel></ScrollViewer>
+    <Border Grid.Row="2" Background="#20282E" Padding="18,14" BorderBrush="#35414A" BorderThickness="0,1,0,0"><StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10"><Button Content="Cancel" Click="Cancel_Click"/><Button Content="Create Job" Click="Create_Click"/></StackPanel></Border>
+  </Grid>
+</Window>

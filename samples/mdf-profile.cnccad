@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "job": { "name": "MDF Rectangle Profile", "widthMm": 600, "heightMm": 400, "thicknessMm": 18, "displayUnit": "Millimetres", "origin": "BottomLeft", "zZero": "MaterialSurface", "safeZMm": 5 },
+  "layers": [{ "id": "11111111-1111-1111-1111-111111111111", "name": "Cut geometry", "isVisible": true, "isLocked": false, "color": "#61C8FF", "order": 0 }],
+  "entities": [{ "type": "rectangle", "id": "22222222-2222-2222-2222-222222222222", "layerId": "11111111-1111-1111-1111-111111111111", "isVisible": true, "isLocked": false, "origin": { "x": 100, "y": 100 }, "width": 200, "height": 100 }]
+}

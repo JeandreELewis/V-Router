@@ -1,0 +1,10 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup><ProjectReference Include="..\CncCad.Core\CncCad.Core.csproj" /><ProjectReference Include="..\CncCad.Cam\CncCad.Cam.csproj" /><PackageReference Include="IxMilia.Dxf" Version="0.8.4" /></ItemGroup>
+</Project>

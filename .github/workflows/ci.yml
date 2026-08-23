@@ -1,0 +1,26 @@
+name: build-and-test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Restore
+        run: dotnet restore CncCad.slnx
+      - name: Build
+        run: dotnet build CncCad.slnx --configuration Release --no-restore
+      - name: Test
+        run: dotnet test CncCad.slnx --configuration Release --no-build --logger "trx;LogFileName=tests.trx"

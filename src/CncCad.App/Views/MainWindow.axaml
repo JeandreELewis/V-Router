@@ -1,0 +1,384 @@
+<?xml version="1.0"?>
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:vm="using:CncCad.App.ViewModels" xmlns:cam="using:CncCad.Cam.Operations" xmlns:nesting="using:CncCad.Cam.Nesting" xmlns:safety="using:CncCad.Cam.Safety" xmlns:core="using:CncCad.Core.Documents" xmlns:geom="using:CncCad.Core.Geometry" xmlns:rendering="using:CncCad.Rendering.Canvas" x:Class="CncCad.App.Views.MainWindow" x:DataType="vm:MainWindowViewModel" Width="1500" Height="920" MinWidth="1100" MinHeight="700" Background="#12171B" Title="CncCad &#x2014; CNC CAD/CAM">
+  <Grid RowDefinitions="56,42,*,32">
+    <Border Grid.Row="0" Background="#20282E" BorderBrush="#34414A" BorderThickness="0,0,0,1" Padding="12,8">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <StackPanel Orientation="Horizontal" Spacing="7">
+          <TextBlock Text="CNC CAD" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+          <Button Content="New Job" Click="NewJob_Click"/>
+          <Button Content="Open&#x2026;" Click="Open_Click"/>
+          <Button Content="Import SVG/DXF&#x2026;" Click="Import_Click" IsEnabled="{Binding HasJob}"/>
+          <Button Content="Save" Click="Save_Click" IsEnabled="{Binding HasJob}"/>
+          <Button Content="Save As&#x2026;" Click="SaveAs_Click" IsEnabled="{Binding HasJob}"/>
+          <Border Width="1" Background="#46535C" Margin="5,3"/>
+          <Button Content="Undo" Click="Undo_Click" IsEnabled="{Binding CanUndo}"/>
+          <Button Content="Redo" Click="Redo_Click" IsEnabled="{Binding CanRedo}"/>
+        </StackPanel>
+        <StackPanel Grid.Column="1" HorizontalAlignment="Center">
+          <TextBlock Text="{Binding JobTitle}" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+          <TextBlock Text="{Binding MaterialSummary}" FontSize="10" Foreground="#91A1AD" HorizontalAlignment="Center"/>
+        </StackPanel>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="7">
+          <Button Content="Preview All" Click="PreviewGCode_Click" IsEnabled="{Binding HasOperations}"/>
+          <Button Content="Export .nc" Click="ExportNc_Click" IsEnabled="{Binding HasOperations}"/>
+          <Button Content="Export .txt" Click="ExportTxt_Click" IsEnabled="{Binding HasOperations}"/>
+          <Button Classes="primary" Content="Export .tap" Click="ExportTap_Click" IsEnabled="{Binding HasOperations}"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+    <Border Grid.Row="1" Background="#181F24" BorderBrush="#303A42" BorderThickness="0,0,0,1" Padding="12,6">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <Border Background="#143F55" BorderBrush="#3187AA" BorderThickness="1" CornerRadius="12" Padding="12,3">
+          <TextBlock Text="{Binding WorkflowStage}" Foreground="#8EDCFF" FontWeight="SemiBold" FontSize="11"/>
+        </Border>
+        <TextBlock Grid.Column="1" Text="1  Job Setup    &#x2192;    2  Design    &#x2192;    3  Toolpaths    &#x2192;    4  Preview &amp; Export" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#82929D" FontSize="11"/>
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5">
+          <Button Classes="compact" Content="Design" Click="DesignFocus_Click"/>
+          <Button Classes="compact" Content="Toolpaths" Click="ToolpathFocus_Click"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+    <Grid x:Name="WorkspaceGrid" Grid.Row="2" ColumnDefinitions="300,*,0">
+      <Border Grid.Column="0" Background="#1B2227" BorderBrush="#34414A" BorderThickness="0,0,1,0">
+        <Grid RowDefinitions="Auto,*">
+          <Border Background="#222B31" Padding="14,11" BorderBrush="#34414A" BorderThickness="0,0,0,1">
+            <StackPanel>
+              <TextBlock Text="DESIGN" FontSize="16" FontWeight="Bold"/>
+              <TextBlock Text="Create and edit vectors" Foreground="#91A1AD" FontSize="11"/>
+            </StackPanel>
+          </Border>
+          <ScrollViewer Grid.Row="1">
+            <StackPanel Margin="9" Spacing="5">
+              <TextBlock Classes="sectionHeading" Text="CREATE VECTORS"/>
+              <ListBox x:Name="DrawingToolPalette" ItemsSource="{Binding CreationTools}" SelectedItem="{Binding ActivePaletteItem}" SelectionChanged="DrawingToolPalette_SelectionChanged" Background="Transparent" BorderThickness="0" Padding="0">
+                <ListBox.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <UniformGrid Columns="2"/>
+                  </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.Styles>
+                  <Style Selector="ListBoxItem">
+                    <Setter Property="Height" Value="68"/>
+                    <Setter Property="Margin" Value="3"/>
+                    <Setter Property="Padding" Value="6"/>
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+                    <Setter Property="Background" Value="#252E34"/>
+                    <Setter Property="BorderBrush" Value="#39464F"/>
+                    <Setter Property="BorderThickness" Value="1"/>
+                    <Setter Property="CornerRadius" Value="7"/>
+                  </Style>
+                  <Style Selector="ListBoxItem:pointerover">
+                    <Setter Property="Background" Value="#303C44"/>
+                  </Style>
+                  <Style Selector="ListBoxItem:selected">
+                    <Setter Property="Background" Value="#174E69"/>
+                    <Setter Property="BorderBrush" Value="#55C7F4"/>
+                    <Setter Property="BorderThickness" Value="2"/>
+                  </Style>
+                </ListBox.Styles>
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:ToolPaletteItem">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="5" ToolTip.Tip="{Binding Tooltip}">
+                      <Path Data="{Binding IconData}" Width="21" Height="21" Stretch="Uniform" Stroke="#E3EDF2" StrokeThickness="1.7"/>
+                      <TextBlock Text="{Binding Label}" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+              <Border Classes="guidance" Margin="3,4">
+                <TextBlock Text="{Binding DesignGuidance}" TextWrapping="Wrap" Foreground="#B5C3CC" FontSize="11"/>
+              </Border>
+              <Border Classes="panelCard" IsVisible="{Binding ShowExactLine}"><StackPanel Spacing="5"><TextBlock Text="EXACT LINE" FontWeight="Bold"/><Grid ColumnDefinitions="*,*" ColumnSpacing="5"><NumericUpDown Value="{Binding Point1X}" Watermark="Start X"/><NumericUpDown Grid.Column="1" Value="{Binding Point1Y}" Watermark="Start Y"/></Grid><Grid ColumnDefinitions="*,*" ColumnSpacing="5"><NumericUpDown Value="{Binding Point2X}" Watermark="End X"/><NumericUpDown Grid.Column="1" Value="{Binding Point2Y}" Watermark="End Y"/></Grid><CheckBox Content="Use length and angle" IsChecked="{Binding ExactUsesLengthAngle}"/><Grid ColumnDefinitions="*,*" ColumnSpacing="5"><NumericUpDown Value="{Binding ExactLength}" Watermark="Length"/><NumericUpDown Grid.Column="1" Value="{Binding ExactAngle}" Watermark="Angle"/></Grid><Button Content="Create Exact Line" Click="CreateExact_Click"/></StackPanel></Border>
+              <Border Classes="panelCard" IsVisible="{Binding ShowExactPolyline}"><StackPanel Spacing="5"><TextBlock Text="EXACT POLYLINE" FontWeight="Bold"/><Grid ColumnDefinitions="*,*" ColumnSpacing="5"><NumericUpDown Value="{Binding Point1X}" Watermark="Start X"/><NumericUpDown Grid.Column="1" Value="{Binding Point1Y}" Watermark="Start Y"/></Grid><Grid ColumnDefinitions="*,*" ColumnSpacing="5"><NumericUpDown Value="{Binding Point2X}" Watermark="Next X"/><NumericUpDown Grid.Column="1" Value="{Binding Point2Y}" Watermark="Next Y"/></Grid><CheckBox Content="Use segment length and angle" IsChecked="{Binding ExactUsesLengthAngle}"/><Grid ColumnDefinitions="*,*" ColumnSpacing="5"><NumericUpDown Value="{Binding ExactLength}" Watermark="Length"/><NumericUpDown Grid.Column="1" Value="{Binding ExactAngle}" Watermark="Angle"/></Grid><Button Content="Add Node" Click="AddNumericNode_Click"/><Grid ColumnDefinitions="*,*" ColumnSpacing="5"><Button Content="Finish" Click="FinishNumericPolyline_Click"/><Button Grid.Column="1" Content="Close" Click="CloseNumericPolyline_Click"/></Grid></StackPanel></Border>
+              <Border Classes="panelCard" IsVisible="{Binding ShowExactRectangle}"><StackPanel Spacing="5"><TextBlock Text="EXACT RECTANGLE" FontWeight="Bold"/><Grid ColumnDefinitions="*,*" ColumnSpacing="5"><NumericUpDown Value="{Binding Point1X}" Watermark="Anchor X"/><NumericUpDown Grid.Column="1" Value="{Binding Point1Y}" Watermark="Anchor Y"/></Grid><Grid ColumnDefinitions="*,*" ColumnSpacing="5"><NumericUpDown Value="{Binding ExactWidth}" Watermark="Width" Minimum="0.001"/><NumericUpDown Grid.Column="1" Value="{Binding ExactHeight}" Watermark="Height" Minimum="0.001"/></Grid><CheckBox Content="Anchor is centre" IsChecked="{Binding RectangleFromCenter}"/><Button Content="Create Exact Rectangle" Click="CreateExact_Click"/></StackPanel></Border>
+              <Border Classes="panelCard" IsVisible="{Binding ShowExactCircle}"><StackPanel Spacing="5"><TextBlock Text="EXACT CIRCLE" FontWeight="Bold"/><Grid ColumnDefinitions="*,*" ColumnSpacing="5"><NumericUpDown Value="{Binding Point1X}" Watermark="Centre X"/><NumericUpDown Grid.Column="1" Value="{Binding Point1Y}" Watermark="Centre Y"/></Grid><NumericUpDown Value="{Binding ExactRadius}" Watermark="Radius / diameter" Minimum="0.001"/><CheckBox Content="Value is diameter" IsChecked="{Binding CircleUsesDiameter}"/><Button Content="Create Exact Circle" Click="CreateExact_Click"/></StackPanel></Border>
+              <Border Classes="panelCard" IsVisible="{Binding ShowExactArc}"><StackPanel Spacing="5"><TextBlock Text="EXACT 3-POINT ARC" FontWeight="Bold"/><Grid ColumnDefinitions="*,*" ColumnSpacing="5"><NumericUpDown Value="{Binding Point1X}" Watermark="Start X"/><NumericUpDown Grid.Column="1" Value="{Binding Point1Y}" Watermark="Start Y"/></Grid><Grid ColumnDefinitions="*,*" ColumnSpacing="5"><NumericUpDown Value="{Binding Point2X}" Watermark="Through X"/><NumericUpDown Grid.Column="1" Value="{Binding Point2Y}" Watermark="Through Y"/></Grid><Grid ColumnDefinitions="*,*" ColumnSpacing="5"><NumericUpDown Value="{Binding Point3X}" Watermark="End X"/><NumericUpDown Grid.Column="1" Value="{Binding Point3Y}" Watermark="End Y"/></Grid><Button Content="Create Exact Arc" Click="CreateExact_Click"/></StackPanel></Border>
+              <TextBlock Classes="sectionHeading" Text="EDIT OBJECTS"/>
+              <UniformGrid Columns="2">
+                <ToggleButton Classes="actionTile" Content="Select / Move" IsChecked="{Binding IsSelectActive}" Click="SelectTool_Click"/>
+                <Button Classes="actionTile" Content="Copy" Click="Copy_Click" IsEnabled="{Binding HasSelection}"/>
+                <Button Classes="actionTile" Content="Paste" Click="Paste_Click" IsEnabled="{Binding HasClipboard}"/>
+                <Button Classes="actionTile" Content="Duplicate" Click="Duplicate_Click" IsEnabled="{Binding HasSelection}"/>
+                <Button Classes="actionTile" Content="Delete" Click="Delete_Click" IsEnabled="{Binding HasSelection}"/>
+              </UniformGrid>
+              <TextBlock Classes="sectionHeading" Text="POSITION"/>
+              <TextBlock Text="{Binding SelectionStatus}" Foreground="#E5C56B" FontSize="11" Margin="3,0"/>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="7" IsEnabled="{Binding HasSelection}">
+                <StackPanel>
+                  <TextBlock Text="X &#xB7; left (mm)" FontSize="10"/>
+                  <NumericUpDown Value="{Binding SelectionX}" Minimum="-100000" Maximum="100000"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1">
+                  <TextBlock Text="Y &#xB7; bottom (mm)" FontSize="10"/>
+                  <NumericUpDown Value="{Binding SelectionY}" Minimum="-100000" Maximum="100000"/>
+                </StackPanel>
+              </Grid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="7">
+                <Button Content="Apply" Click="ApplyPosition_Click" IsEnabled="{Binding HasSelection}"/>
+                <Button Grid.Column="1" Content="Center" Click="CenterSelection_Click" IsEnabled="{Binding HasSelection}" ToolTip.Tip="Center selection on material"/>
+              </Grid>
+              <TextBlock Classes="sectionHeading" Text="TRANSFORM"/>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5" IsEnabled="{Binding HasSelection}"><NumericUpDown Value="{Binding PivotX}" Watermark="Pivot X"/><NumericUpDown Grid.Column="1" Value="{Binding PivotY}" Watermark="Pivot Y"/></Grid>
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="5"><NumericUpDown Value="{Binding TransformAngle}" Watermark="Angle (deg)"/><Button Grid.Column="1" Content="Rotate" Click="Rotate_Click" IsEnabled="{Binding HasSelection}"/></Grid>
+              <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="5"><NumericUpDown Value="{Binding ScaleX}" Watermark="Scale X"/><NumericUpDown Grid.Column="1" Value="{Binding ScaleY}" Watermark="Scale Y"/><Button Grid.Column="2" Content="Scale" Click="Scale_Click" IsEnabled="{Binding HasSelection}"/></Grid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5"><Button Content="Mirror H" Click="MirrorH_Click" IsEnabled="{Binding HasSelection}"/><Button Grid.Column="1" Content="Mirror V" Click="MirrorV_Click" IsEnabled="{Binding HasSelection}"/></Grid>
+              <TextBlock Classes="sectionHeading" Text="ALIGN &amp; DISTRIBUTE"/>
+              <UniformGrid Columns="3" IsEnabled="{Binding CanAlign}"><Button Content="Left" Tag="Left" Click="Align_Click"/><Button Content="Centre X" Tag="HCenter" Click="Align_Click"/><Button Content="Right" Tag="Right" Click="Align_Click"/><Button Content="Bottom" Tag="Bottom" Click="Align_Click"/><Button Content="Centre Y" Tag="VCenter" Click="Align_Click"/><Button Content="Top" Tag="Top" Click="Align_Click"/></UniformGrid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5" IsEnabled="{Binding CanDistribute}"><Button Content="Distribute H" Click="DistributeH_Click"/><Button Grid.Column="1" Content="Distribute V" Click="DistributeV_Click"/></Grid>
+              <TextBlock Classes="sectionHeading" Text="VECTOR OPERATIONS"/>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5"><NumericUpDown Value="{Binding OffsetDistance}" Watermark="Signed offset"/><ComboBox Grid.Column="1" ItemsSource="{Binding OffsetJoins}" SelectedItem="{Binding OffsetJoin}"/></Grid>
+              <Button Content="Create Offset" Click="Offset_Click" IsEnabled="{Binding HasSelection}"/><Grid ColumnDefinitions="*,*,*" ColumnSpacing="4"><Button Content="Join" Click="Join_Click"/><Button Grid.Column="1" Content="Open" Click="OpenPath_Click"/><Button Grid.Column="2" Content="Close" Click="ClosePath_Click"/></Grid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5"><NumericUpDown Value="{Binding ChamferDistance}" Minimum="0.001" Watermark="Chamfer"/><NumericUpDown Grid.Column="1" Value="{Binding FilletRadius}" Minimum="0.001" Watermark="Fillet radius"/></Grid>
+              <Grid ColumnDefinitions="70,*,*" ColumnSpacing="4"><NumericUpDown Value="{Binding CornerIndex}" Minimum="0" Watermark="Node"/><Button Grid.Column="1" Content="Chamfer" Click="Chamfer_Click"/><Button Grid.Column="2" Content="Fillet" Click="Fillet_Click"/></Grid>
+              <Button Content="Trim selected line at X/Y above" Click="Trim_Click" ToolTip.Tip="Select the target line first, then intersecting vectors. Point X/Y chooses the segment to remove."/>
+              <TextBlock Classes="sectionHeading" Text="SHAPES &amp; TEXT"/>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5"><NumericUpDown Value="{Binding Point1X}" Watermark="X"/><NumericUpDown Grid.Column="1" Value="{Binding Point1Y}" Watermark="Y"/></Grid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5"><NumericUpDown Value="{Binding ShapeWidth}" Watermark="Width"/><NumericUpDown Grid.Column="1" Value="{Binding ShapeHeight}" Watermark="Height"/></Grid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5"><Button Content="Slot" Click="CreateSlot_Click"/><Button Grid.Column="1" Content="Rounded Rect" Click="CreateRounded_Click"/></Grid>
+              <Grid ColumnDefinitions="*,*,*" ColumnSpacing="4"><NumericUpDown Value="{Binding ShapeSides}" Minimum="3" Watermark="Sides"/><NumericUpDown Grid.Column="1" Value="{Binding ShapeOuterRadius}" Minimum="0.001" Watermark="Outer R"/><NumericUpDown Grid.Column="2" Value="{Binding ShapeInnerRadius}" Minimum="0.001" Watermark="Inner R"/></Grid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5"><Button Content="Polygon" Click="CreatePolygon_Click"/><Button Grid.Column="1" Content="Star" Click="CreateStar_Click"/></Grid>
+              <TextBox Text="{Binding TextValue}" Watermark="Text"/><Grid ColumnDefinitions="*,*" ColumnSpacing="5"><TextBox Text="{Binding TextFont}" Watermark="Font"/><NumericUpDown Grid.Column="1" Value="{Binding TextSize}" Minimum="0.1" Watermark="Size mm"/></Grid><Button Content="Create Text Outlines" Click="CreateText_Click"/>
+              <TextBlock Classes="sectionHeading" Text="VECTOR REPAIR"/>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5"><NumericUpDown Value="{Binding RepairTolerance}" Minimum="0.0001" Watermark="Tolerance"/><NumericUpDown Grid.Column="1" Value="{Binding MinimumSegment}" Minimum="0.0001" Watermark="Min segment"/></Grid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5"><Button Content="Analyze" Click="AnalyzeRepair_Click"/><Button Grid.Column="1" Content="Apply Safe Repairs" Click="ApplyRepair_Click"/></Grid>
+              <ListBox ItemsSource="{Binding RepairIssues}" MaxHeight="120"><ListBox.ItemTemplate><DataTemplate x:DataType="geom:RepairIssue"><TextBlock Text="{Binding Message}" FontSize="10" TextWrapping="Wrap"/></DataTemplate></ListBox.ItemTemplate></ListBox>
+              <TextBlock Classes="sectionHeading" Text="NODE EDIT"/>
+              <ToggleButton x:Name="NodeEditToggle" Content="Edit Nodes" Click="NodeEdit_Click" IsEnabled="{Binding HasSelection}"/>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5" IsEnabled="{Binding HasActiveNode}"><NumericUpDown Value="{Binding NodeX}" Watermark="Node X"/><NumericUpDown Grid.Column="1" Value="{Binding NodeY}" Watermark="Node Y"/></Grid><Button Content="Apply Node Position" Click="ApplyNode_Click" IsEnabled="{Binding HasActiveNode}"/><Grid ColumnDefinitions="*,*,*" ColumnSpacing="4"><Button Content="Insert" Click="InsertNode_Click"/><Button Grid.Column="1" Content="Delete" Click="DeleteNode_Click"/><Button Grid.Column="2" Content="Make Start" Click="MakeStartNode_Click"/></Grid>
+              <TextBlock Classes="sectionHeading" Text="SNAPPING"/>
+              <WrapPanel>
+                <CheckBox Content="Grid" IsChecked="{Binding SnapSettings.Grid}" Margin="2,0,10,5"/>
+                <CheckBox Content="Endpoint" IsChecked="{Binding SnapSettings.Endpoint}" Margin="2,0,10,5"/>
+                <CheckBox Content="Midpoint" IsChecked="{Binding SnapSettings.Midpoint}" Margin="2,0,10,5"/>
+                <CheckBox Content="Center" IsChecked="{Binding SnapSettings.Center}" Margin="2,0,10,5"/>
+              </WrapPanel>
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                <NumericUpDown Value="{Binding SnapSettings.GridSpacingMm}" Minimum="0.1" Maximum="1000"/>
+                <TextBlock Grid.Column="1" Text="mm grid" VerticalAlignment="Center" FontSize="10"/>
+              </Grid>
+              <TextBlock Classes="sectionHeading" Text="LAYERS"/>
+              <ListBox ItemsSource="{Binding Layers}" SelectedItem="{Binding SelectedLayer}" MaxHeight="130"><ListBox.ItemTemplate><DataTemplate x:DataType="core:CadLayer"><Grid ColumnDefinitions="*,Auto,Auto"><TextBlock Text="{Binding Name}"/><TextBlock Grid.Column="1" Text="{Binding IsVisible}" FontSize="9"/><TextBlock Grid.Column="2" Text="{Binding IsLocked}" FontSize="9" Margin="6,0,0,0"/></Grid></DataTemplate></ListBox.ItemTemplate></ListBox>
+              <Grid ColumnDefinitions="*,90" ColumnSpacing="5"><TextBox Text="{Binding SelectedLayer.Name}" LostFocus="LayerProperties_LostFocus" Watermark="Layer name"/><TextBox Grid.Column="1" Text="{Binding SelectedLayer.Color}" LostFocus="LayerProperties_LostFocus" Watermark="#RRGGBB"/></Grid>
+              <Grid ColumnDefinitions="*,*,*" ColumnSpacing="4"><Button Content="New" Click="AddLayer_Click"/><Button Grid.Column="1" Content="Activate" Click="ActivateLayer_Click"/><Button Grid.Column="2" Content="Delete" Click="DeleteLayer_Click"/></Grid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="4"><Button Content="Show / Hide" Click="ToggleLayerVisibility_Click"/><Button Grid.Column="1" Content="Lock / Unlock" Click="ToggleLayerLock_Click"/></Grid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="4"><Button Content="Select Contents" Click="SelectLayer_Click"/><Button Grid.Column="1" Content="Move Selection Here" Click="MoveToLayer_Click"/></Grid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="4"><Button Content="Move Layer Up" Click="MoveLayerUp_Click"/><Button Grid.Column="1" Content="Move Layer Down" Click="MoveLayerDown_Click"/></Grid>
+              <TextBlock Classes="sectionHeading" Text="MATERIAL NESTING"/>
+              <TextBlock Text="{Binding NestingSummary}" FontSize="10" Foreground="#91A1AD" TextWrapping="Wrap"/>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5"><StackPanel><TextBlock Text="Quantity" FontSize="9"/><NumericUpDown Value="{Binding NestQuantity}" Minimum="1" Maximum="10000"/></StackPanel><CheckBox Grid.Column="1" Content="Allow 90°" IsChecked="{Binding NestAllowQuarterTurn}" VerticalAlignment="Bottom"/></Grid>
+              <Button Content="Add Selected Parts" Click="AddNestParts_Click" IsEnabled="{Binding HasSelection}"/>
+              <ListBox ItemsSource="{Binding NestParts}" SelectedItem="{Binding SelectedNestPart}" MaxHeight="110"><ListBox.ItemTemplate><DataTemplate x:DataType="nesting:NestPartDefinition"><Grid ColumnDefinitions="*,Auto"><TextBlock Text="{Binding Name}"/><TextBlock Grid.Column="1" Text="{Binding Quantity, StringFormat='×{0}'}"/></Grid></DataTemplate></ListBox.ItemTemplate></ListBox>
+              <Button Content="Remove Part" Click="RemoveNestPart_Click" IsEnabled="{Binding SelectedNestPart}"/>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5"><StackPanel><TextBlock Text="Part spacing" FontSize="9"/><NumericUpDown Value="{Binding NestSpacing}" Minimum="0"/></StackPanel><StackPanel Grid.Column="1"><TextBlock Text="Edge margin" FontSize="9"/><NumericUpDown Value="{Binding NestEdgeMargin}" Minimum="0"/></StackPanel></Grid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5"><Button Content="Optimize Nest" Click="OptimizeNest_Click"/><Button Grid.Column="1" Classes="primary" Content="Accept Layout" Click="AcceptNest_Click"/></Grid>
+              <TextBlock Classes="sectionHeading" Text="JOB"/>
+              <Border Classes="panelCard">
+                <StackPanel>
+                  <TextBlock Text="{Binding JobTitle}" FontWeight="SemiBold"/>
+                  <TextBlock Text="{Binding MaterialSummary}" Foreground="#91A1AD" FontSize="11"/>
+                  <TextBlock Text="{Binding OriginSummary}" Foreground="#75CBEF" FontSize="10" TextWrapping="Wrap"/>
+                  <Button Content="Edit Job Setup&#x2026;" Click="EditJob_Click" IsEnabled="{Binding HasJob}" Margin="0,7,0,0"/>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+        </Grid>
+      </Border>
+      <Grid x:Name="CenterWorkspaceGrid" Grid.Column="1" RowDefinitions="42,*,0" Background="#11171B">
+        <Border Background="#1C2429" BorderBrush="#34414A" BorderThickness="0,0,0,1" Padding="8,5">
+          <Grid ColumnDefinitions="Auto,*,Auto">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <ToggleButton x:Name="DesignViewButton" Classes="viewTab" Content="2D Design" IsChecked="True" Click="DesignView_Click"/>
+              <ToggleButton x:Name="PreviewViewButton" Classes="viewTab" Content="Toolpath Preview" Click="ToolpathView_Click"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" HorizontalAlignment="Center" Orientation="Horizontal" Spacing="5"><Button Content="Source" Click="SourceDesign_Click" ToolTip.Tip="Return to editable source parts"/><ComboBox Width="170" ItemsSource="{Binding MaterialSheets}" SelectedItem="{Binding SelectedMaterialSheet}" DisplayMemberBinding="{Binding Name}" PlaceholderText="Source Design" SelectionChanged="MaterialSheet_SelectionChanged"/></StackPanel>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5">
+              <Button Classes="compact" Content="Fit Job" Click="ZoomFit_Click"/>
+              <Button Classes="compact" Content="Fit Selection" Click="ZoomSelection_Click" IsEnabled="{Binding HasSelection}"/>
+              <Button Classes="compact" Content="Iso" Tag="Isometric" Click="CameraPreset_Click" ToolTip.Tip="Isometric 3D view" IsVisible="{Binding IsToolpathPreview}"/>
+              <Button Classes="compact" Content="Top" Tag="Top" Click="CameraPreset_Click" IsVisible="{Binding IsToolpathPreview}"/>
+              <Button Classes="compact" Content="Front" Tag="Front" Click="CameraPreset_Click" IsVisible="{Binding IsToolpathPreview}"/>
+              <Button Classes="compact" Content="Right" Tag="Right" Click="CameraPreset_Click" IsVisible="{Binding IsToolpathPreview}"/>
+              <ToggleButton x:Name="GridToggle" Classes="compact" Content="Grid" IsChecked="True" Click="GridToggle_Click"/>
+              <ToggleButton x:Name="SnapToggle" Classes="compact" Content="Snapping" IsChecked="True" Click="SnapToggle_Click"/>
+              <ToggleButton x:Name="PathsToggle" Classes="compact" Content="Paths" IsChecked="True" Click="PathsToggle_Click" IsVisible="{Binding IsToolpathPreview}"/>
+            </StackPanel>
+          </Grid>
+        </Border>
+        <Grid Grid.Row="1">
+          <rendering:CadCanvas x:Name="Canvas" IsEnabled="{Binding HasJob}"/>
+          <Border IsVisible="{Binding !HasJob}" Background="#EE151B1F" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="30" CornerRadius="10" BorderBrush="#40515C" BorderThickness="1">
+            <StackPanel Width="330" Spacing="9">
+              <TextBlock Text="Start a CNC job" FontSize="22" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+              <TextBlock Text="Define the material size and thickness before drawing." TextWrapping="Wrap" TextAlignment="Center" Foreground="#AEBCC5"/>
+              <Button Classes="primary" Content="Create New Job" Click="NewJob_Click" HorizontalAlignment="Center"/>
+            </StackPanel>
+          </Border>
+          <Border IsVisible="{Binding ShowEmptyDesign}" Background="#F01A2025" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="24" CornerRadius="9" BorderBrush="#3A6679" BorderThickness="1">
+            <StackPanel Width="310" Spacing="7">
+              <TextBlock Text="Your material is ready" FontSize="19" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+              <TextBlock Text="Choose a vector tool from the Design panel." TextWrapping="Wrap" TextAlignment="Center" Foreground="#AEBCC5"/>
+            </StackPanel>
+          </Border>
+        </Grid>
+        <Border Grid.Row="2" Background="#20292F" BorderBrush="#34414A" BorderThickness="0,1,0,0" Padding="9,6" IsVisible="{Binding ShowPlaybackControls}">
+          <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+            <StackPanel Orientation="Horizontal" Spacing="5">
+              <Button x:Name="PlayPauseButton" Classes="compact" Content="{Binding PlaybackAction}" Click="PlayPause_Click"/>
+              <Button Classes="compact" Content="Stop" Click="PlaybackStop_Click"/>
+              <Button Classes="compact" Content="Restart" Click="PlaybackRestart_Click"/>
+            </StackPanel>
+            <TextBlock Grid.Column="1" Text="{Binding PlaybackSessionLabel}" VerticalAlignment="Center" FontWeight="SemiBold"/>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="Speed" VerticalAlignment="Center" Foreground="#91A1AD"/>
+              <ComboBox Width="78" ItemsSource="{Binding PlaybackSpeeds}" SelectedItem="{Binding PlaybackSpeed}" SelectionChanged="PlaybackSpeed_SelectionChanged"/>
+              <TextBlock Text="×" VerticalAlignment="Center"/>
+            </StackPanel>
+            <Slider x:Name="PlaybackSlider" Grid.Row="1" Minimum="0" Maximum="100" Value="{Binding PlaybackProgress}" ValueChanged="PlaybackSlider_ValueChanged"/>
+            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding PlaybackPosition}" VerticalAlignment="Center" FontSize="10" Foreground="#9FB0BA"/>
+            <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding PlaybackTime}" VerticalAlignment="Center" FontFamily="Menlo,Consolas"/>
+            <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="Left drag: orbit · Middle drag: pan · Wheel: zoom" FontSize="10" Foreground="#7F929D"/>
+            <StackPanel Grid.Row="2" Grid.Column="2" Orientation="Horizontal" Spacing="4">
+              <TextBlock Text="{Binding CameraView}" FontSize="10" Foreground="#9FB0BA"/>
+              <TextBlock Text="·" FontSize="10" Foreground="#63747E"/>
+              <TextBlock Text="{Binding PlaybackDepth}" FontSize="10" Foreground="#9FB0BA"/>
+            </StackPanel>
+          </Grid>
+        </Border>
+      </Grid>
+      <Border Grid.Column="2" Background="#1B2227" BorderBrush="#34414A" BorderThickness="1,0,0,0">
+        <Grid RowDefinitions="Auto,*,Auto">
+          <Border Background="#222B31" Padding="14,11" BorderBrush="#34414A" BorderThickness="0,0,0,1">
+            <StackPanel>
+              <TextBlock Text="TOOLPATHS" FontSize="16" FontWeight="Bold"/>
+              <TextBlock Text="Create, calculate and export" Foreground="#91A1AD" FontSize="11"/>
+            </StackPanel>
+          </Border>
+          <ScrollViewer Grid.Row="1">
+            <StackPanel Margin="11" Spacing="7">
+              <TextBlock Classes="sectionHeading" Text="CREATE TOOLPATH"/>
+              <Border Classes="panelCard">
+                <StackPanel Spacing="8">
+                  <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                    <Border Width="42" Height="42" Background="#174E69" CornerRadius="7">
+                      <Path Data="M5,7 L19,7 19,19 5,19 Z M2,4 L22,4 22,22 2,22 Z" Width="24" Height="24" Stroke="#79D7FF" StrokeThickness="1.6" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <StackPanel Grid.Column="1">
+                      <TextBlock Text="Profile Toolpath" FontWeight="SemiBold" FontSize="14"/>
+                      <TextBlock Text="Cut inside, outside, or on selected vectors" Foreground="#91A1AD" FontSize="10" TextWrapping="Wrap"/>
+                    </StackPanel>
+                  </Grid>
+                  <TextBlock Text="{Binding ProfileGuidance}" Foreground="#D8C477" TextWrapping="Wrap" FontSize="11"/>
+                  <Button Classes="primary" Content="Create Profile Toolpath" Click="CreateProfile_Click" IsEnabled="{Binding CanCreateProfile}"/>
+                </StackPanel>
+              </Border>
+              <TextBlock Classes="sectionHeading" Text="COMING LATER"/>
+              <UniformGrid Columns="3">
+                <Border Classes="comingTile">
+                  <TextBlock Text="Pocket"/>
+                </Border>
+                <Border Classes="comingTile">
+                  <TextBlock Text="Drill"/>
+                </Border>
+                <Border Classes="comingTile">
+                  <TextBlock Text="Engrave"/>
+                </Border>
+              </UniformGrid>
+              <TextBlock Classes="sectionHeading" Text="MACHINE &amp; FIXTURES"/>
+              <ComboBox ItemsSource="{Binding Machines}" SelectedItem="{Binding SelectedMachine}" DisplayMemberBinding="{Binding Name}" PlaceholderText="Select machine"/>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5"><Button Content="Use Snapshot" Click="UseMachine_Click"/><Button Grid.Column="1" Content="Save Machine" Click="SaveMachine_Click"/></Grid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5"><StackPanel><TextBlock Text="Park X" FontSize="9"/><NumericUpDown Value="{Binding SelectedMachine.ParkXmm}" FormatString="0.###"/></StackPanel><StackPanel Grid.Column="1"><TextBlock Text="Park Y" FontSize="9"/><NumericUpDown Value="{Binding SelectedMachine.ParkYmm}" FormatString="0.###"/></StackPanel></Grid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5"><StackPanel><TextBlock Text="Holder Ø" FontSize="9"/><NumericUpDown Value="{Binding SelectedMachine.HolderDiameterMm}" Minimum="0" FormatString="0.###"/></StackPanel><StackPanel Grid.Column="1"><TextBlock Text="Clearance Z" FontSize="9"/><NumericUpDown Value="{Binding SelectedMachine.DefaultClearanceMm}" Minimum="0" FormatString="0.###"/></StackPanel></Grid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5"><StackPanel><TextBlock Text="X travel min / max" FontSize="9"/><NumericUpDown Value="{Binding SelectedMachine.MinimumXmm}" FormatString="0.###"/></StackPanel><NumericUpDown Grid.Column="1" Value="{Binding SelectedMachine.MaximumXmm}" FormatString="0.###" VerticalAlignment="Bottom"/></Grid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5"><StackPanel><TextBlock Text="Y travel min / max" FontSize="9"/><NumericUpDown Value="{Binding SelectedMachine.MinimumYmm}" FormatString="0.###"/></StackPanel><NumericUpDown Grid.Column="1" Value="{Binding SelectedMachine.MaximumYmm}" FormatString="0.###" VerticalAlignment="Bottom"/></Grid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5"><StackPanel><TextBlock Text="Z travel min / max" FontSize="9"/><NumericUpDown Value="{Binding SelectedMachine.MinimumZmm}" FormatString="0.###"/></StackPanel><NumericUpDown Grid.Column="1" Value="{Binding SelectedMachine.MaximumZmm}" FormatString="0.###" VerticalAlignment="Bottom"/></Grid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5"><StackPanel><TextBlock Text="Max RPM" FontSize="9"/><NumericUpDown Value="{Binding SelectedMachine.MaximumSpindleRpm}" Minimum="1"/></StackPanel><StackPanel Grid.Column="1"><TextBlock Text="Spoilboard allowance" FontSize="9"/><NumericUpDown Value="{Binding SelectedMachine.AllowedSpoilboardDepthMm}" Minimum="0" FormatString="0.###"/></StackPanel></Grid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5">
+                <Button Content="Add Clamp" Click="AddFixture_Click"/>
+                <Button Grid.Column="1" Content="Delete Clamp" Click="DeleteFixture_Click" IsEnabled="{Binding SelectedFixture}"/>
+              </Grid>
+              <ListBox ItemsSource="{Binding Fixtures}" SelectedItem="{Binding SelectedFixture}" MaxHeight="90">
+                <ListBox.ItemTemplate><DataTemplate x:DataType="safety:FixtureDefinition"><TextBlock Text="{Binding Name}"/></DataTemplate></ListBox.ItemTemplate>
+              </ListBox>
+              <StackPanel IsVisible="{Binding SelectedFixture}" Spacing="3">
+                <TextBox Text="{Binding SelectedFixture.Name}" LostFocus="FixtureField_LostFocus"/>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="4"><NumericUpDown Value="{Binding SelectedFixture.MinXmm}" FormatString="0.###" LostFocus="FixtureField_LostFocus"/><NumericUpDown Grid.Column="1" Value="{Binding SelectedFixture.MaxXmm}" FormatString="0.###" LostFocus="FixtureField_LostFocus"/></Grid>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="4"><NumericUpDown Value="{Binding SelectedFixture.MinYmm}" FormatString="0.###" LostFocus="FixtureField_LostFocus"/><NumericUpDown Grid.Column="1" Value="{Binding SelectedFixture.MaxYmm}" FormatString="0.###" LostFocus="FixtureField_LostFocus"/></Grid>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="4"><StackPanel><TextBlock Text="Top Z" FontSize="9"/><NumericUpDown Value="{Binding SelectedFixture.TopZmm}" FormatString="0.###" LostFocus="FixtureField_LostFocus"/></StackPanel><StackPanel Grid.Column="1"><TextBlock Text="Clearance" FontSize="9"/><NumericUpDown Value="{Binding SelectedFixture.RequiredClearanceMm}" Minimum="0" FormatString="0.###" LostFocus="FixtureField_LostFocus"/></StackPanel></Grid>
+              </StackPanel>
+              <TextBlock Classes="sectionHeading" Text="SAFETY PREFLIGHT"/>
+              <Border Classes="guidance"><StackPanel Spacing="3">
+                <TextBlock Text="{Binding PreflightStatus}" FontWeight="Bold" Foreground="#65C9FF"/>
+                <TextBlock Text="{Binding PreflightSummary}" FontSize="10" TextWrapping="Wrap"/>
+                <TextBlock Text="Safety checks reduce risk but cannot guarantee a crash-free setup." FontSize="9" Foreground="#D8C477" TextWrapping="Wrap"/>
+              </StackPanel></Border>
+              <Button Content="Run Preflight" Click="RunPreflight_Click" IsEnabled="{Binding HasOperations}"/>
+              <ListBox ItemsSource="{Binding SafetyFindings}" SelectedItem="{Binding SelectedSafetyFinding}" MaxHeight="150">
+                <ListBox.ItemTemplate><DataTemplate x:DataType="safety:SafetyFinding"><StackPanel Margin="3"><TextBlock Text="{Binding Severity}" FontWeight="Bold"/><TextBlock Text="{Binding Message}" FontSize="10" TextWrapping="Wrap"/><TextBlock Text="{Binding Suggestion}" FontSize="9" Foreground="#91A1AD" TextWrapping="Wrap"/></StackPanel></DataTemplate></ListBox.ItemTemplate>
+              </ListBox>
+              <TextBlock Classes="sectionHeading" Text="CALCULATED TOOLPATHS"/>
+              <Border IsVisible="{Binding !HasOperations}" Classes="guidance">
+                <TextBlock Text="No toolpaths yet. Select closed vectors and create a Profile toolpath above." Foreground="#91A1AD" TextWrapping="Wrap"/>
+              </Border>
+              <ListBox ItemsSource="{Binding Operations}" SelectedItem="{Binding SelectedOperation}" MinHeight="165" MaxHeight="330" Background="#141A1E" BorderBrush="#35414A">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="cam:CamOperationDefinition">
+                    <Border Padding="10" Margin="1,3" CornerRadius="5" Background="#242D33">
+                      <Grid RowDefinitions="Auto,Auto,Auto,Auto" ColumnDefinitions="*,Auto">
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Status}" Foreground="#65C9FF" FontSize="11"/>
+                        <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding ToolSummary}" Foreground="#C1CED5" FontSize="11"/>
+                        <TextBlock Grid.Row="2" Text="{Binding DetailSummary}" Foreground="#91A1AD" FontSize="10"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding TimeSummary}" Foreground="#91A1AD" FontSize="10"/>
+                        <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Text="{Binding Error}" Foreground="#FF9A9A" FontSize="10" TextWrapping="Wrap"/>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+              <Grid ColumnDefinitions="*,*,*" ColumnSpacing="5">
+                <Button Content="Edit" Click="EditProfile_Click" IsEnabled="{Binding SelectedOperation}"/>
+                <Button Grid.Column="1" Content="Duplicate" Click="DuplicateProfile_Click" IsEnabled="{Binding SelectedOperation}"/>
+                <Button Grid.Column="2" Content="Delete" Click="DeleteProfile_Click" IsEnabled="{Binding SelectedOperation}"/>
+              </Grid>
+              <TextBlock Classes="sectionHeading" Text="SHEET EXPORT"/>
+              <Grid ColumnDefinitions="*,*,*" ColumnSpacing="5"><Button Content="All .nc" Tag="nc" Click="ExportSheets_Click"/><Button Grid.Column="1" Content="All .txt" Tag="txt" Click="ExportSheets_Click"/><Button Grid.Column="2" Content="All .tap" Tag="tap" Click="ExportSheets_Click"/></Grid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="5"><ToggleButton x:Name="TabEditToggle" Content="Place Tabs on Canvas" Click="TabEdit_Click" IsEnabled="{Binding SelectedOperation}"/><Button Grid.Column="1" Content="Remove Last Tab" Click="DeleteTab_Click" IsEnabled="{Binding SelectedOperation}"/></Grid>
+              <Grid ColumnDefinitions="*,*,*" ColumnSpacing="5">
+                <Button Content="Enable / Disable" Click="ToggleProfile_Click" IsEnabled="{Binding SelectedOperation}"/>
+                <Button Grid.Column="1" Content="Recalculate" Click="RecalculateProfile_Click" IsEnabled="{Binding SelectedOperation}"/>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="3">
+                  <Button Content="&#x2191;" Click="MoveProfileUp_Click" IsEnabled="{Binding SelectedOperation}"/>
+                  <Button Content="&#x2193;" Click="MoveProfileDown_Click" IsEnabled="{Binding SelectedOperation}"/>
+                </StackPanel>
+              </Grid>
+            </StackPanel>
+          </ScrollViewer>
+          <Border Grid.Row="2" Background="#20292F" BorderBrush="#34414A" BorderThickness="0,1,0,0" Padding="11">
+            <StackPanel Spacing="7">
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="7">
+                <Button Content="Preview Selected" Click="PreviewSelected_Click" IsEnabled="{Binding SelectedOperation}"/>
+                <Button Grid.Column="1" Classes="primary" Content="Preview All" Click="PreviewGCode_Click" IsEnabled="{Binding HasOperations}"/>
+              </Grid>
+              <TextBlock Text="EXPORT UCCNC G-CODE" FontSize="10" Foreground="#91A1AD"/>
+              <Grid ColumnDefinitions="*,*,*" ColumnSpacing="5">
+                <Button Content=".nc" Click="ExportNc_Click" IsEnabled="{Binding HasOperations}"/>
+                <Button Grid.Column="1" Content=".txt" Click="ExportTxt_Click" IsEnabled="{Binding HasOperations}"/>
+                <Button Grid.Column="2" Classes="primary" Content=".tap" Click="ExportTap_Click" IsEnabled="{Binding HasOperations}"/>
+              </Grid>
+            </StackPanel>
+          </Border>
+        </Grid>
+      </Border>
+    </Grid>
+    <Border Grid.Row="3" Background="#20282E" BorderBrush="#34414A" BorderThickness="0,1,0,0" Padding="10,5">
+      <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="18">
+        <TextBlock Text="{Binding Message}"/>
+        <TextBlock Grid.Column="1" Text="{Binding InteractionStatus}" Foreground="#65C9FF"/>
+        <TextBlock Grid.Column="2" Text="{Binding PointerStatus}"/>
+        <TextBlock Grid.Column="3" Text="{Binding ZoomStatus}"/>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

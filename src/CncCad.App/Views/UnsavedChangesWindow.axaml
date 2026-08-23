@@ -1,0 +1,6 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="CncCad.App.Views.UnsavedChangesWindow" Width="500" Height="245" CanResize="False" WindowStartupLocation="CenterOwner" Background="#181E23" Title="Unsaved changes">
+  <Grid RowDefinitions="*,Auto">
+    <StackPanel Margin="24" Spacing="10"><TextBlock Text="Save changes before continuing?" FontSize="22" FontWeight="SemiBold"/><TextBlock x:Name="MessageText" TextWrapping="Wrap" Foreground="#A8B5BE"/><TextBlock Text="If you discard, changes made since the last save will be lost." TextWrapping="Wrap" Foreground="#E4B66A"/></StackPanel>
+    <Border Grid.Row="1" Background="#20282E" Padding="16" BorderBrush="#35414A" BorderThickness="0,1,0,0"><Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10"><Button Content="Cancel" Click="Cancel_Click"/><Button Grid.Column="2" Content="Discard" Click="Discard_Click"/><Button Grid.Column="3" Content="Save" Click="Save_Click"/></Grid></Border>
+  </Grid>
+</Window>

@@ -1,0 +1,27 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CncCad.App.App"
+             xmlns:local="using:CncCad.App"
+             RequestedThemeVariant="Dark">
+             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+
+    <Application.DataTemplates>
+        <local:ViewLocator/>
+    </Application.DataTemplates>
+  
+    <Application.Styles>
+        <FluentTheme />
+        <Style Selector="Button.editTile"><Setter Property="Height" Value="58"/><Setter Property="Margin" Value="4"/><Setter Property="Padding" Value="6"/><Setter Property="HorizontalAlignment" Value="Stretch"/><Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/><Setter Property="CornerRadius" Value="6"/></Style>
+        <Style Selector="TextBlock.heading"><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Foreground" Value="#91A1AD"/><Setter Property="Margin" Value="0,4,0,8"/></Style>
+        <Style Selector="TextBlock.sectionHeading"><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Foreground" Value="#8296A2"/><Setter Property="FontSize" Value="11"/><Setter Property="Margin" Value="3,13,3,4"/></Style>
+        <Style Selector="Button.primary"><Setter Property="Background" Value="#17658A"/><Setter Property="BorderBrush" Value="#50BCE8"/><Setter Property="Foreground" Value="White"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
+        <Style Selector="Button.compact"><Setter Property="Padding" Value="9,4"/><Setter Property="FontSize" Value="10"/><Setter Property="MinHeight" Value="26"/></Style>
+        <Style Selector="ToggleButton.compact"><Setter Property="Padding" Value="9,4"/><Setter Property="FontSize" Value="10"/><Setter Property="MinHeight" Value="26"/></Style>
+        <Style Selector="ToggleButton.viewTab"><Setter Property="Padding" Value="13,5"/><Setter Property="FontSize" Value="11"/><Setter Property="CornerRadius" Value="5"/></Style>
+        <Style Selector="Button.actionTile"><Setter Property="Height" Value="38"/><Setter Property="Margin" Value="3"/><Setter Property="Padding" Value="5"/><Setter Property="FontSize" Value="11"/><Setter Property="HorizontalAlignment" Value="Stretch"/></Style>
+        <Style Selector="ToggleButton.actionTile"><Setter Property="Height" Value="38"/><Setter Property="Margin" Value="3"/><Setter Property="Padding" Value="5"/><Setter Property="FontSize" Value="11"/><Setter Property="HorizontalAlignment" Value="Stretch"/></Style>
+        <Style Selector="Border.panelCard"><Setter Property="Background" Value="#252E34"/><Setter Property="BorderBrush" Value="#39464F"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="7"/><Setter Property="Padding" Value="10"/></Style>
+        <Style Selector="Border.guidance"><Setter Property="Background" Value="#202A30"/><Setter Property="BorderBrush" Value="#33434D"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="6"/><Setter Property="Padding" Value="9"/></Style>
+        <Style Selector="Border.comingTile"><Setter Property="Background" Value="#20272C"/><Setter Property="BorderBrush" Value="#354047"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="5"/><Setter Property="Padding" Value="7"/><Setter Property="Margin" Value="2"/><Setter Property="Opacity" Value="0.55"/></Style>
+    </Application.Styles>
+</Application>

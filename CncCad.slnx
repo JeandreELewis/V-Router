@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CncCad.App/CncCad.App.csproj" />
+    <Project Path="src/CncCad.Cam/CncCad.Cam.csproj" />
+    <Project Path="src/CncCad.Core/CncCad.Core.csproj" />
+    <Project Path="src/CncCad.Infrastructure/CncCad.Infrastructure.csproj" />
+    <Project Path="src/CncCad.IO/CncCad.IO.csproj" />
+    <Project Path="src/CncCad.PostProcessors/CncCad.PostProcessors.csproj" />
+    <Project Path="src/CncCad.Rendering/CncCad.Rendering.csproj" />
+    <Project Path="src/CncCad.Simulation/CncCad.Simulation.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CncCad.Cam.Tests/CncCad.Cam.Tests.csproj" />
+    <Project Path="tests/CncCad.Core.Tests/CncCad.Core.Tests.csproj" />
+    <Project Path="tests/CncCad.PostProcessors.Tests/CncCad.PostProcessors.Tests.csproj" />
+  </Folder>
+</Solution>
