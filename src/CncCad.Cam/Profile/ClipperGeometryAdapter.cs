@@ -27,6 +27,11 @@ internal static class ClipperGeometryAdapter
         return result.Select(path => (IReadOnlyList<Point2D>)path.Select(point => new Point2D(point.x, point.y)).ToArray()).Where(path => path.Count >= 3 && Math.Abs(SignedArea(path)) > 1e-8).ToArray();
     }
 
+    public static IReadOnlyList<IReadOnlyList<Point2D>> OffsetRound(IReadOnlyList<Point2D> contour,double delta)
+    {
+        if(Math.Abs(delta)<1e-9)return[contour];var paths=new PathsD{new(contour.Select(point=>new PointD(point.X,point.Y)))};var result=Clipper.InflatePaths(paths,delta,JoinType.Round,EndType.Polygon,6,DecimalPrecision);return result.Select(path=>(IReadOnlyList<Point2D>)path.Select(point=>new Point2D(point.x,point.y)).ToArray()).Where(path=>path.Count>=3&&Math.Abs(SignedArea(path))>1e-8).ToArray();
+    }
+
     public static IReadOnlyList<IReadOnlyList<Point2D>> PocketOffsets(IEnumerable<IReadOnlyList<Point2D>> contours, double initialInset, double stepOver)
     {
         if (initialInset < 0 || stepOver <= 0) throw new ArgumentOutOfRangeException(nameof(stepOver));

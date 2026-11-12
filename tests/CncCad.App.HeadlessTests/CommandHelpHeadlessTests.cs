@@ -224,6 +224,17 @@ public sealed class CommandHelpHeadlessTests
     }
 
     [AvaloniaFact]
+    public void SurfacePaletteUsesSelectedClosedRegionAndCalculatesAtMinimumSize()
+    {
+        var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent());vm.CreateJob(new JobSettings{Name="Regional surface",WidthMm=120,HeightMm=100,ThicknessMm=18});var region=new PolylineEntity{LayerId=vm.Document.ActiveLayerId,IsClosed=true,Points=[new(10,10),new(90,10),new(90,35),new(40,35),new(40,80),new(10,80)]};vm.Document.Entities.Add(region);vm.Selection.Set(region.Id);vm.SelectionChanged();vm.SelectedTool=new(){Name="20 mm facing cutter",Type=ToolType.SurfacingBit,DiameterMm=20,StepDownMm=1,StepOverPercent=40,FeedRateMmPerMin=1600,PlungeRateMmPerMin=300,SpindleRpm=16000};vm.SetWorkspaceMode(WorkspaceMode.Toolpaths);var window=new MainWindow{DataContext=vm,Width=1100,Height=700};window.Show();Dispatcher.UIThread.RunJobs();
+        try
+        {
+            var create=window.GetVisualDescendants().OfType<Button>().Single(control=>control.IsVisible&&Equals(control.Content,"S"));create.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();var draft=Assert.IsType<CncCad.Cam.Operations.SurfaceOperationDefinition>(vm.OperationEditorDraft);Assert.Equal([region.Id],draft.GeometryIds);var apply=window.GetVisualDescendants().OfType<Button>().Single(control=>control.IsVisible&&Equals(control.Content,"Calculate / Apply"));apply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();var operation=Assert.IsType<CncCad.Cam.Operations.SurfaceOperationDefinition>(Assert.Single(vm.CamJob.Operations));Assert.Equal(CncCad.Cam.Operations.OperationStatus.Current,operation.Status);Assert.NotNull(operation.CalculatedToolpath);Assert.Equal([region.Id],operation.CalculatedToolpath!.SourceGeometryIds);
+        }
+        finally{window.Close();}
+    }
+
+    [AvaloniaFact]
     public void RepeatedClickCyclesOverlappingVectorsWithoutMutatingGeometry()
     {
         var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent());vm.CreateJob(new JobSettings{Name="Overlap selection",WidthMm=100,HeightMm=100,ThicknessMm=18});var lower=new LineEntity{LayerId=vm.Document.ActiveLayerId,Start=new(10,50),End=new(90,50)};var upper=new LineEntity{LayerId=vm.Document.ActiveLayerId,Start=new(10,50),End=new(90,50)};vm.Document.Entities.AddRange([lower,upper]);var window=new MainWindow{DataContext=vm,Width=1100,Height=700};window.Show();Dispatcher.UIThread.RunJobs();

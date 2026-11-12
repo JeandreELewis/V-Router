@@ -90,6 +90,21 @@ public sealed class ProductionWorkflowTests
         definition.OvertravelMm=10.01;var invalid=new SurfaceOperationCalculator().Calculate(definition,new Dictionary<Guid,CadEntity>());Assert.False(invalid.Success);Assert.Contains(invalid.Errors,error=>error.Code=="overtravel");
     }
 
+    [Theory]
+    [InlineData(SurfaceStrategy.RasterX)]
+    [InlineData(SurfaceStrategy.RasterY)]
+    [InlineData(SurfaceStrategy.Offset)]
+    public void SurfaceSelectedConcaveRegionIsClippedDeterministicAndPortable(SurfaceStrategy strategy)
+    {
+        var region=new PolylineEntity{Transform=Matrix2D.Translation(5,7),IsClosed=true,Points=[new(0,0),new(60,0),new(60,20),new(20,20),new(20,60),new(0,60)]};var definition=new SurfaceOperationDefinition{GeometryIds=[region.Id],Tool=Tool(12) with{Type=ToolType.SurfacingBit},OriginXmm=5,OriginYmm=7,WidthMm=60,HeightMm=60,CutDepthMm=1,PassDepthMm=.5,StepOverMm=8,OvertravelMm=0,Strategy=strategy,SafeZMm=5,FeedRateMmPerMin=1600,PlungeRateMmPerMin=300,SpindleRpm=16000};var geometry=new Dictionary<Guid,CadEntity>{{region.Id,region}};var calculator=new SurfaceOperationCalculator();var first=calculator.Calculate(definition,geometry);var second=calculator.Calculate(definition,geometry);Assert.True(first.Success,string.Join("; ",first.Errors.Select(error=>error.Message)));Assert.Equal([region.Id],first.Toolpath!.SourceGeometryIds);var cutting=first.Toolpath.Moves.OfType<LinearMove>().Where(move=>move.Z<0&&move.FeedRate==definition.FeedRateMmPerMin).Select(move=>move.End).ToArray();Assert.NotEmpty(cutting);Assert.All(cutting,point=>{Assert.InRange(point.X,5,65);Assert.InRange(point.Y,7,67);Assert.False(point.X>25.000001&&point.Y>27.000001,$"Point {point} entered the excluded concave corner.");});Assert.Equal(first.Toolpath.Moves,second.Toolpath!.Moves);
+    }
+
+    [Fact]
+    public void SurfaceRegionFailuresAreStructuredAndNeverFallBackToTheBoundingBox()
+    {
+        var open=new PolylineEntity{Points=[new(0,0),new(40,0),new(20,20)]};var other=new RectangleEntity{Width=20,Height=20};var definition=new SurfaceOperationDefinition{GeometryIds=[open.Id],Tool=Tool(12) with{Type=ToolType.SurfacingBit},WidthMm=40,HeightMm=20,CutDepthMm=1,PassDepthMm=1,StepOverMm=6,SafeZMm=5,FeedRateMmPerMin=1200,PlungeRateMmPerMin=300,SpindleRpm=16000};var calculator=new SurfaceOperationCalculator();var invalid=calculator.Calculate(definition,new Dictionary<Guid,CadEntity>{{open.Id,open}});Assert.False(invalid.Success);Assert.Contains(invalid.Errors,error=>error.Code=="invalid-region");definition.GeometryIds=[Guid.NewGuid()];var missing=calculator.Calculate(definition,new Dictionary<Guid,CadEntity>());Assert.Contains(missing.Errors,error=>error.Code=="missing-geometry");definition.GeometryIds=[open.Id,other.Id];var multiple=calculator.Calculate(definition,new Dictionary<Guid,CadEntity>{{open.Id,open},{other.Id,other}});Assert.Contains(multiple.Errors,error=>error.Code=="region-count");
+    }
+
     [Fact]
     public void CalculatorRegistryRejectsNonFiniteInputsBeforeGeneratingMotion()
     {
