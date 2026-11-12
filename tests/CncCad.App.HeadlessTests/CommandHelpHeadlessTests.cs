@@ -206,6 +206,22 @@ public sealed class CommandHelpHeadlessTests
     }
 
     [AvaloniaFact]
+    public void LayerCommandsMoveInvalidateAndUndoThroughVisibleControls()
+    {
+        var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent());vm.CreateJob(new JobSettings{Name="Layers",WidthMm=100,HeightMm=100,ThicknessMm=18});var original=vm.Document.ActiveLayerId;var line=new LineEntity{LayerId=original,Start=new(10,10),End=new(70,10)};vm.AddEntity(line);var operation=new CncCad.Cam.Operations.EngraveOperationDefinition{GeometryIds=[line.Id],Status=CncCad.Cam.Operations.OperationStatus.Current,CalculatedToolpath=new()};vm.CamJob.Operations.Add(operation);vm.OpenDesignTask(DesignTaskPage.Layers);var window=new MainWindow{DataContext=vm,Width=1100,Height=700};window.Show();Dispatcher.UIThread.RunJobs();
+        try
+        {
+            Button Visible(string label)=>window.GetVisualDescendants().OfType<Button>().Single(control=>control.IsVisible&&Equals(control.Content,label));
+            Visible("New").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();var added=vm.SelectedLayer!;Assert.NotEqual(original,added.Id);Assert.Equal(2,vm.Document.Layers.Count);
+            Visible("Move Selection Here").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();Assert.Equal(added.Id,line.LayerId);Assert.Equal(CncCad.Cam.Operations.OperationStatus.Stale,operation.Status);vm.Undo();Assert.Equal(original,line.LayerId);
+            Visible("Lock / Unlock").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();Assert.True(added.IsLocked);vm.Undo();Assert.False(added.IsLocked);
+            Visible("Move Up").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();Assert.Equal(0,added.Order);vm.Undo();Assert.Equal(1,added.Order);
+            Visible("Delete").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();Assert.DoesNotContain(added,vm.Document.Layers);vm.Undo();Assert.Contains(added,vm.Document.Layers);
+        }
+        finally{window.Close();}
+    }
+
+    [AvaloniaFact]
     public void ExactPolylineCancelIsVisibleAtMinimumSizeAndDoesNotCreateHistoryOrGeometry()
     {
         var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent());vm.CreateJob(new JobSettings{Name="Exact polyline",WidthMm=100,HeightMm=100,ThicknessMm=18});vm.ActivePaletteItem=vm.CreationTools.Single(item=>item.Tool==CanvasTool.Polyline);vm.OpenDesignTask(DesignTaskPage.Construction);vm.Point1X=1;vm.Point1Y=2;vm.Point2X=10;vm.Point2Y=2;vm.AddNumericPolylineNode();var window=new MainWindow{DataContext=vm,Width=1100,Height=700};window.Show();Dispatcher.UIThread.RunJobs();

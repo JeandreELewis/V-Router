@@ -24,7 +24,7 @@ For each of UCCNC, Mach3, Mach4, GRBL and LinuxCNC, attach:
 4. dated air-cut checklist and operator sign-off;
 5. hashes of the exact post definition and proof-job output.
 
-Only after this evidence is reviewed may `PostCertificationStatus` be changed to `Certified` for that definition.
+Only after this evidence is reviewed may `PostCertificationPolicy.Certify(...)` promote that immutable definition to `Certified`. The policy rejects mismatched post IDs, missing metric/imperial reports, absent arc/dwell/tool-change coverage, future or missing air-cut dates, missing operator sign-off, malformed SHA-256 values, or missing cabinet/sign/nested proof-output hashes in either unit. `CertificationStatus` cannot be assigned by consumer code.
 
 ## Windows production artifacts
 

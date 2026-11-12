@@ -126,12 +126,26 @@ public class UccncTests
 
     [Fact] public void CombinedMultiToolFileIsBlockedEvenForCertifiedAutomaticMachineAndPost()
     {
-        var definition=BuiltInPostDefinitions.Uccnc with{CertificationStatus=PostCertificationStatus.Certified};
+        var definition=PostCertificationPolicy.Certify(BuiltInPostDefinitions.Uccnc,CompleteEvidence("uccnc"),new DateOnly(2026,1,2));
         var machine=new MachineProfile{ControllerFamily=ControllerFamily.Uccnc,ToolChangeMode=MachineToolChangeMode.Automatic};
         var program=new ToolpathProgram{Name="ATC",Operations=[new(){Moves=[new ToolChange(1,"A"),new RapidMove(new(0,0),5)]},new(){Moves=[new ToolChange(2,"B"),new RapidMove(new(1,1),5)]}]};
         var result=Process(program,machine,definition:definition);
         Assert.False(result.Success);Assert.Empty(result.Files);Assert.Contains(result.Errors,x=>x.Code=="multi-tool-file-unsafe"&&x.Message.Contains("only one cutter"));
         var split=Process(program,machine,definition:definition,scope:PostExportScope.SeparateByTool);Assert.True(split.Success);Assert.Equal(2,split.Files.Count);Assert.All(split.Files,file=>Assert.Equal(1,file.Content.Split("Load T").Length-1));
+    }
+
+    [Fact]
+    public void CertificationCannotBeGrantedWithoutCompleteReviewedEvidence()
+    {
+        var incomplete=new PostCertificationEvidence{PostId="uccnc",ControllerOrParserVersion="",MachineProfile="",MetricParserReportSha256="bad",ImperialParserReportSha256="bad",OperatorSignOff="",PostDefinitionSha256="bad"};
+        var validation=PostCertificationPolicy.Validate(BuiltInPostDefinitions.Uccnc,incomplete,new DateOnly(2026,1,2));Assert.False(validation.Success);Assert.Contains(validation.Errors,error=>error.Contains("air-cut",StringComparison.OrdinalIgnoreCase));Assert.Contains(validation.Errors,error=>error.Contains("cabinet-panel-mm",StringComparison.OrdinalIgnoreCase));Assert.Throws<InvalidDataException>(()=>PostCertificationPolicy.Certify(BuiltInPostDefinitions.Uccnc,incomplete,new DateOnly(2026,1,2)));
+        var certified=PostCertificationPolicy.Certify(BuiltInPostDefinitions.Uccnc,CompleteEvidence("uccnc"),new DateOnly(2026,1,2));Assert.Equal(PostCertificationStatus.Certified,certified.CertificationStatus);Assert.Equal(PostCertificationStatus.CertificationPending,BuiltInPostDefinitions.Uccnc.CertificationStatus);
+    }
+
+    private static PostCertificationEvidence CompleteEvidence(string postId)
+    {
+        const string hash="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        return new(){PostId=postId,ControllerOrParserVersion="Controller 1 / parser 1",MachineProfile="Representative router",MetricParserReportSha256=hash,ImperialParserReportSha256=hash,ArcCoverage=true,DwellCoverage=true,ToolChangeCoverage=true,AirCutDate=new(2026,1,1),OperatorSignOff="Test operator",PostDefinitionSha256=hash,ProofJobOutputSha256=new Dictionary<string,string>{{"cabinet-panel-mm",hash},{"cabinet-panel-in",hash},{"sign-mm",hash},{"sign-in",hash},{"nested-sheet-mm",hash},{"nested-sheet-in",hash}}};
     }
 
     [Fact] public void SameCutterCanShareOneFileWithoutRepeatedToolPause()

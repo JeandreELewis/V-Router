@@ -31,7 +31,7 @@ public sealed record PostDefinition
     public IReadOnlyList<string> HeaderLines { get; init; } = ["G90","G17","G94","G40","G49","G80"];
     public IReadOnlyList<string> FooterLines { get; init; } = ["M30"];
     public bool IsBuiltIn { get; init; }
-    public PostCertificationStatus CertificationStatus { get; init; } = PostCertificationStatus.Uncertified;
+    public PostCertificationStatus CertificationStatus { get; internal init; } = PostCertificationStatus.Uncertified;
 }
 
 public sealed record PostProcessRequest(ToolpathProgram Program,MachineProfile MachineSnapshot,MeasurementUnit OutputUnit,PostDefinition PostDefinition,PostExportScope ExportScope=PostExportScope.Combined);
