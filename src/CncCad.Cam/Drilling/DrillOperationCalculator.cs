@@ -11,6 +11,8 @@ public sealed class DrillOperationCalculator : ICamOperationCalculator
     public OperationCalculationResult Calculate(CamOperationDefinition operation, IReadOnlyDictionary<Guid, CadEntity> geometry)
     {
         if (operation is not DrillOperationDefinition drill) return OperationCalculationResult.Failed(new OperationValidationError("unsupported", "Operation is not drilling."));
+        var numericErrors=OperationNumerics.ValidateDefinition(drill);
+        if(numericErrors.Count>0)return new(null,numericErrors);
         var errors = Validate(drill, geometry);
         if (errors.Count > 0) return new(null, errors);
         var points = drill.GeometryIds.Select(id => Center(geometry[id])).ToList();
@@ -36,7 +38,7 @@ public sealed class DrillOperationCalculator : ICamOperationCalculator
             toolpath.Moves.Add(new RapidMove(point, drill.SafeZMm));
         }
         toolpath.Moves.Add(new SpindleStop());
-        return new(toolpath, []);
+        return OperationNumerics.ValidateResult(new(toolpath, []));
     }
 
     private static List<OperationValidationError> Validate(DrillOperationDefinition drill, IReadOnlyDictionary<Guid, CadEntity> geometry)

@@ -12,6 +12,7 @@ public sealed class VCarveOperationCalculator:ICamOperationCalculator
     public OperationCalculationResult Calculate(CamOperationDefinition operation,IReadOnlyDictionary<Guid,CadEntity> geometry)
     {
         if(operation is not VCarveOperationDefinition carve)return OperationCalculationResult.Failed(new OperationValidationError("unsupported","Operation is not V-carving."));
+        var numericErrors=OperationNumerics.ValidateDefinition(carve);if(numericErrors.Count>0)return new(null,numericErrors);
         var errors=Validate(carve,geometry);if(errors.Count>0)return new(null,errors);
         var contours=new List<IReadOnlyList<Point2D>>();foreach(var id in carve.GeometryIds)contours.AddRange(Contours(geometry[id]));
         var path=new ToolpathOperation{SourceOperationId=carve.Id,Name=carve.Name,ToolId=carve.Tool.SourceToolId,MaterialSheetId=carve.MaterialSheetId,SourceGeometryIds=[..carve.GeometryIds]};path.Moves.Add(new ToolChange(carve.Tool.ToolNumber,carve.Tool.Name));path.Moves.Add(new SpindleStart(carve.SpindleRpm));
@@ -25,7 +26,7 @@ public sealed class VCarveOperationCalculator:ICamOperationCalculator
             var effectiveRadius=tipRadius+carve.MaximumDepthMm*tangent;foreach(var ring in ClipperGeometryAdapter.PocketOffsets(contours,effectiveRadius,carve.OffsetStepOverMm).OrderBy(ring=>ring.Min(point=>point.X)).ThenBy(ring=>ring.Min(point=>point.Y))){var points=ring.ToList();var nearest=Enumerable.Range(0,points.Count).OrderBy(index=>current.DistanceTo(points[index])).ThenBy(index=>index).First();points=[..points.Skip(nearest),..points.Take(nearest),points[nearest]];path.Moves.Add(new RapidMove(points[0],carve.SafeZMm));path.Moves.Add(new LinearMove(points[0],-carve.MaximumDepthMm,carve.PlungeRateMmPerMin));foreach(var point in points.Skip(1))path.Moves.Add(new LinearMove(point,-carve.MaximumDepthMm,carve.FeedRateMmPerMin));path.Moves.Add(new RapidMove(points[^1],carve.SafeZMm));current=points[^1];generated++;}
         }
         if(generated==0)return OperationCalculationResult.Failed(new OperationValidationError("collapsed","The selected outlines are too narrow for this V-bit tip diameter. Choose a finer tip or wider geometry."));
-        path.Moves.Add(new SpindleStop());return new(path,[]);
+        path.Moves.Add(new SpindleStop());return OperationNumerics.ValidateResult(new(path,[]));
         double Depth(double clearance)=>Math.Min(carve.MaximumDepthMm,Math.Max(0,(clearance-tipRadius)/tangent));
     }
     private static List<OperationValidationError> Validate(VCarveOperationDefinition operation,IReadOnlyDictionary<Guid,CadEntity> geometry)

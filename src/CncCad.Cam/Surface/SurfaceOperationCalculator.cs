@@ -14,6 +14,8 @@ public sealed class SurfaceOperationCalculator : ICamOperationCalculator
     {
         if (operation is not SurfaceOperationDefinition surface)
             return OperationCalculationResult.Failed(new OperationValidationError("unsupported", "Operation is not a surfacing operation."));
+        var numericErrors=OperationNumerics.ValidateDefinition(surface);
+        if(numericErrors.Count>0)return new(null,numericErrors);
         var errors = Validate(surface);
         if (errors.Count > 0) return new(null, errors);
 
@@ -32,7 +34,7 @@ public sealed class SurfaceOperationCalculator : ICamOperationCalculator
             }
         }
         path.Moves.Add(new SpindleStop());
-        return new(path, []);
+        return OperationNumerics.ValidateResult(new(path, []));
     }
 
     private static List<OperationValidationError> Validate(SurfaceOperationDefinition s)

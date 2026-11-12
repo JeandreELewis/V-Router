@@ -99,6 +99,13 @@ public static class OperationNumerics
         return errors;
     }
 
+    public static OperationCalculationResult ValidateResult(OperationCalculationResult result)
+    {
+        if (result.Toolpath is null) return result;
+        var errors = ValidateMoves(result.Toolpath);
+        return errors.Count == 0 ? result : new(null, result.Diagnostics.Concat(errors).ToArray());
+    }
+
     private static bool Finite(Point2D point) => double.IsFinite(point.X) && double.IsFinite(point.Y);
     private static void AddOptional(List<(string Name, double Value)> values, string name, double? value)
     {

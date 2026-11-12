@@ -18,10 +18,7 @@ public sealed class CompositeOperationCalculator:ICamOperationCalculator
         var numericErrors=OperationNumerics.ValidateDefinition(operation);
         if(numericErrors.Count>0)return new(null,numericErrors);
         if(!calculators.TryGetValue(operation.GetType(),out var calculator))return OperationCalculationResult.Failed(new OperationValidationError("unsupported",$"{operation.GetType().Name} is not supported."));
-        var result=calculator.Calculate(operation,geometry);
-        if(result.Toolpath is null)return result;
-        var moveErrors=OperationNumerics.ValidateMoves(result.Toolpath);
-        return moveErrors.Count==0?result:new(null,result.Diagnostics.Concat(moveErrors).ToArray());
+        return OperationNumerics.ValidateResult(calculator.Calculate(operation,geometry));
     }
 }
 public sealed class EngraveOperationCalculator:ICamOperationCalculator
@@ -30,6 +27,7 @@ public sealed class EngraveOperationCalculator:ICamOperationCalculator
     public OperationCalculationResult Calculate(CamOperationDefinition operation,IReadOnlyDictionary<Guid,CadEntity> geometry)
     {
         if(operation is not EngraveOperationDefinition engrave)return OperationCalculationResult.Failed(new OperationValidationError("unsupported","Operation is not engraving."));
+        var numericErrors=OperationNumerics.ValidateDefinition(engrave);if(numericErrors.Count>0)return new(null,numericErrors);
         var errors=Validate(engrave,geometry);if(errors.Count>0)return new(null,errors);
         var paths=engrave.GeometryIds.SelectMany(id=>Paths(geometry[id]).Select(path=>path with{SourceId=id})).Where(path=>path.Segments.Count>0).ToList();
         var toolpath=new ToolpathOperation{SourceOperationId=engrave.Id,Name=engrave.Name,ToolId=engrave.Tool.SourceToolId,MaterialSheetId=engrave.MaterialSheetId,SourceGeometryIds=[..engrave.GeometryIds]};
@@ -49,7 +47,7 @@ public sealed class EngraveOperationCalculator:ICamOperationCalculator
             }
             current=path.End;
         }
-        toolpath.Moves.Add(new SpindleStop());return new(toolpath,[]);
+        toolpath.Moves.Add(new SpindleStop());return OperationNumerics.ValidateResult(new(toolpath,[]));
     }
     private static List<OperationValidationError> Validate(EngraveOperationDefinition e,IReadOnlyDictionary<Guid,CadEntity> geometry){var errors=new List<OperationValidationError>();if(e.GeometryIds.Count==0)errors.Add(new("geometry","Select engraving vectors."));if(e.Tool.DiameterMm<=0)errors.Add(new("tool","Select a valid engraving tool."));if(e.CutDepthMm<=e.StartDepthMm||e.PassDepthMm<=0)errors.Add(new("depth","Engraving depth and pass depth are invalid."));if(e.FeedRateMmPerMin<=0||e.PlungeRateMmPerMin<=0||e.SafeZMm<=0)errors.Add(new("rates","Engraving rates and safe Z must be positive."));foreach(var id in e.GeometryIds){if(!geometry.TryGetValue(id,out var entity))errors.Add(new("missing",$"Referenced vector {id} is missing."));else if(Paths(entity).All(path=>path.Segments.Count==0))errors.Add(new("degenerate",$"{entity.GetType().Name} contains no machinable stroke."));}return errors;}
     private static IEnumerable<EngravePath> Paths(CadEntity entity)=>entity switch

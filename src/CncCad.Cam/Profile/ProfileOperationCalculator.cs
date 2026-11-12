@@ -11,6 +11,7 @@ public sealed class ProfileOperationCalculator : ICamOperationCalculator
     public OperationCalculationResult Calculate(CamOperationDefinition operation, IReadOnlyDictionary<Guid, CadEntity> geometry)
     {
         if (operation is not ProfileOperationDefinition profile) return OperationCalculationResult.Failed(new OperationValidationError("unsupported", "Operation type is not supported."));
+        var numericErrors=OperationNumerics.ValidateDefinition(profile);if(numericErrors.Count>0)return new(null,numericErrors);
         var errors = Validate(profile, geometry); if (errors.Count > 0) return new(null, errors);
         var contours = new List<Contour>();
         foreach (var id in profile.GeometryIds)
@@ -61,7 +62,7 @@ public sealed class ProfileOperationCalculator : ICamOperationCalculator
             // XY motion with the retract would create a diagonal rapid below the configured clearance.
             toolpath.Moves.Add(new RapidMove(retractPoint, profile.SafeZMm)); current = retractPoint;
         }
-        toolpath.Moves.Add(new SpindleStop()); return new(toolpath, []);
+        toolpath.Moves.Add(new SpindleStop()); return OperationNumerics.ValidateResult(new(toolpath, []));
     }
 
     private static List<OperationValidationError> Validate(ProfileOperationDefinition p, IReadOnlyDictionary<Guid, CadEntity> geometry)

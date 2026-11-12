@@ -102,6 +102,38 @@ public sealed class ProductionWorkflowTests
     }
 
     [Fact]
+    public void EveryPublicCalculatorRejectsNonFiniteInputsWhenCalledDirectly()
+    {
+        var cases = new (ICamOperationCalculator Calculator, CamOperationDefinition Definition)[]
+        {
+            (new ProfileOperationCalculator(),new ProfileOperationDefinition{Tool=Tool(),CutDepthMm=double.NaN}),
+            (new PocketOperationCalculator(),new PocketOperationDefinition{Tool=Tool(),StepOverMm=double.PositiveInfinity}),
+            (new DrillOperationCalculator(),new DrillOperationDefinition{Tool=Tool(3) with{Type=ToolType.Drill},DwellSeconds=double.NaN}),
+            (new EngraveOperationCalculator(),new EngraveOperationDefinition{Tool=Tool(2),FeedRateMmPerMin=double.NegativeInfinity}),
+            (new VCarveOperationCalculator(),new VCarveOperationDefinition{Tool=Tool(6) with{Type=ToolType.VBit,VBitAngleDegrees=90,TipDiameterMm=.2},MaximumDepthMm=double.NaN}),
+            (new SurfaceOperationCalculator(),new SurfaceOperationDefinition{Tool=Tool(20) with{Type=ToolType.SurfacingBit},WidthMm=double.PositiveInfinity})
+        };
+
+        foreach(var (calculator,definition) in cases)
+        {
+            var result=calculator.Calculate(definition,new Dictionary<Guid,CadEntity>());
+            Assert.False(result.Success);
+            Assert.Null(result.Toolpath);
+            Assert.Contains(result.Errors,error=>error.Code=="non-finite");
+        }
+    }
+
+    [Fact]
+    public void CalculatorResultValidationRejectsInvalidGeneratedMotion()
+    {
+        var path=new ToolpathOperation{Name="Unsafe",Moves=[new LinearMove(new(double.NaN,0),-1,100)]};
+        var result=OperationNumerics.ValidateResult(new(path,[]));
+        Assert.False(result.Success);
+        Assert.Null(result.Toolpath);
+        Assert.Contains(result.Errors,error=>error.Code=="invalid-move"&&error.Message.Contains("move 1"));
+    }
+
+    [Fact]
     public void PocketHelixKeepsTheCompleteCutterEnvelopeInsideOuterAndIslandBoundaries()
     {
         var outer=new RectangleEntity{Width=100,Height=80};var island=new RectangleEntity{Origin=new(35,25),Width=30,Height=30};var definition=new PocketOperationDefinition{GeometryIds=[outer.Id,island.Id],Tool=Tool(),Strategy=PocketStrategy.Raster,EntryMode=PocketEntryMode.Helix,RampLengthMm=12,CutDepthMm=2,PassDepthMm=2,StepOverMm=4,SafeZMm=5,FeedRateMmPerMin=1000,PlungeRateMmPerMin=250,SpindleRpm=18000};var result=new PocketOperationCalculator().Calculate(definition,new Dictionary<Guid,CadEntity>{{outer.Id,outer},{island.Id,island}});

@@ -12,6 +12,8 @@ public sealed class PocketOperationCalculator : ICamOperationCalculator
     public OperationCalculationResult Calculate(CamOperationDefinition operation, IReadOnlyDictionary<Guid, CadEntity> geometry)
     {
         if (operation is not PocketOperationDefinition pocket) return OperationCalculationResult.Failed(new OperationValidationError("unsupported", "Operation is not a pocket."));
+        var numericErrors=OperationNumerics.ValidateDefinition(pocket);
+        if(numericErrors.Count>0)return new(null,numericErrors);
         var errors = Validate(pocket, geometry);
         if (errors.Count > 0) return new(null, errors);
         var contours = pocket.GeometryIds.Select(id => ClipperGeometryAdapter.ToContour(geometry[id])).ToArray();
@@ -82,7 +84,7 @@ public sealed class PocketOperationCalculator : ICamOperationCalculator
             toolpath.Moves.Add(new RapidMove(finish.Path[0],pocket.SafeZMm));
         }
         toolpath.Moves.Add(new SpindleStop());
-        return new(toolpath, []);
+        return OperationNumerics.ValidateResult(new(toolpath, []));
     }
 
     private static List<OperationValidationError> Validate(PocketOperationDefinition pocket, IReadOnlyDictionary<Guid, CadEntity> geometry)

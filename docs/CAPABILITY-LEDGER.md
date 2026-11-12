@@ -66,6 +66,8 @@ Status meanings:
 
 ## CAM operations
 
+All six public operation calculators apply the shared finite-number policy at their direct entry point and validate every generated machine move before returning a toolpath; callers do not need to route through the registry to receive these guarantees.
+
 | Operation / option | Status | Current behavior | Safety and unlock gate |
 |---|---|---|---|
 | Profile | Incomplete | Cutter compensation, direction, arc-length manual start, leads, exact-length cyclic ramps, tabs, onion skin and allowances; finish passes feed laterally from the full-depth rough contour instead of plunging into allowance | All transformed/native-curve combinations still need independent fixtures |
