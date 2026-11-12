@@ -3,6 +3,15 @@ using CncCad.Core.Entities;
 
 namespace CncCad.Core.Commands;
 
+public sealed class SetActiveLayerCommand:IUndoableCommand
+{
+    private readonly CadDocument _document;private readonly Guid _before;private readonly Guid _after;
+    public SetActiveLayerCommand(CadDocument document,Guid layerId){if(document.Layers.All(layer=>layer.Id!=layerId))throw new ArgumentException("Layer is not in the document.",nameof(layerId));_document=document;_before=document.ActiveLayerId;_after=layerId;}
+    public string Description=>"Change active layer";
+    public void Execute()=>_document.ActiveLayerId=_after;
+    public void Undo()=>_document.ActiveLayerId=_before;
+}
+
 public sealed class AddLayerCommand(CadDocument document,CadLayer layer):IUndoableCommand
 {
     private readonly Guid _previousActive=document.ActiveLayerId;

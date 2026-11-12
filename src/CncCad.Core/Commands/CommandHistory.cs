@@ -2,6 +2,7 @@ namespace CncCad.Core.Commands;
 
 public interface IUndoableCommand { string Description { get; } void Execute(); void Undo(); }
 public interface IEntityAffectingCommand { IReadOnlyCollection<Guid> AffectedEntityIds { get; } }
+public interface IJobSettingsAffectingCommand { }
 
 public sealed class CommandHistory
 {

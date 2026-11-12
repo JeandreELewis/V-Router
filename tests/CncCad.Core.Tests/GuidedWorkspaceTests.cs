@@ -1,5 +1,6 @@
 using CncCad.App.ViewModels;
 using CncCad.Cam.Operations;
+using CncCad.Cam.Nesting;
 using CncCad.Cam.Tools;
 using CncCad.Cam.Safety;
 using CncCad.Core.Documents;
@@ -192,6 +193,22 @@ public class GuidedWorkspaceTests
     [Fact] public void LayerCreationFlagsOrderingAndEntityMovesAreUndoable()
     {
         var vm=ViewModel();vm.CreateJob(new JobSettings());var original=vm.Document.ActiveLayerId;var entity=new LineEntity{LayerId=original,End=new(10,0)};vm.AddEntity(entity);vm.AddLayer();var added=vm.Document.ActiveLayerId;Assert.NotEqual(original,added);vm.MoveSelectionToLayer();Assert.Equal(added,entity.LayerId);vm.Undo();Assert.Equal(original,entity.LayerId);vm.ToggleLayerVisibility();Assert.False(vm.SelectedLayer!.IsVisible);vm.Undo();Assert.True(vm.Document.Layers.Single(layer=>layer.Id==added).IsVisible);vm.Undo();Assert.DoesNotContain(vm.Document.Layers,layer=>layer.Id==added);vm.Redo();Assert.Contains(vm.Document.Layers,layer=>layer.Id==added);vm.SelectedLayer=vm.Document.Layers.Single(layer=>layer.Id==added);vm.LayerNameDraft="Cut vectors";vm.LayerColorDraft="#123456";vm.CommitLayerProperties();Assert.Equal("Cut vectors",vm.SelectedLayer.Name);vm.Undo();Assert.NotEqual("Cut vectors",vm.Document.Layers.Single(layer=>layer.Id==added).Name);
+    }
+
+    [Fact] public void ActiveLayerAndJobSetupChangesAreSingleUndoableTransactionsThatInvalidateAllDerivedWork()
+    {
+        var vm=ViewModel();vm.CreateJob(new JobSettings{Name="Before",WidthMm=100,HeightMm=80,ThicknessMm=12,SafeZMm=4});var originalLayer=vm.Document.ActiveLayerId;vm.AddLayer();var secondLayer=vm.Document.ActiveLayerId;vm.Undo();Assert.Equal(originalLayer,vm.Document.ActiveLayerId);vm.Redo();Assert.Equal(secondLayer,vm.Document.ActiveLayerId);
+        vm.SelectedLayer=vm.Document.Layers.Single(layer=>layer.Id==originalLayer);vm.ActivateLayer();Assert.Equal(originalLayer,vm.Document.ActiveLayerId);vm.Undo();Assert.Equal(secondLayer,vm.Document.ActiveLayerId);vm.Redo();Assert.Equal(originalLayer,vm.Document.ActiveLayerId);
+
+        var geometry=new RectangleEntity{LayerId=originalLayer,Origin=new(5,5),Width=20,Height=10};vm.Document.Entities.Add(geometry);var profile=new ProfileOperationDefinition{GeometryIds=[geometry.Id],Status=OperationStatus.Current,CalculatedToolpath=new()};var surface=new SurfaceOperationDefinition{Status=OperationStatus.Current,CalculatedToolpath=new()};vm.CamJob.Operations.AddRange([profile,surface]);vm.NestingJob.AcceptedLayout=new NestingResult();vm.NestingJob.Status=NestingLayoutStatus.Current;
+        var changed=new JobSettings{Name="After",WidthMm=200,HeightMm=150,ThicknessMm=18,SafeZMm=7,Origin=XyOrigin.Centre,OriginOffsetXmm=2,OriginOffsetYmm=-3,ZZero=ZZeroPosition.MachineBed};vm.UpdateJob(changed);
+        Assert.Equal("After",vm.Document.Job.Name);Assert.Equal("After",vm.JobTitle);Assert.Equal("200 × 150 × 18 mm",vm.MaterialSummary);Assert.All(vm.CamJob.Operations,operation=>Assert.Equal(OperationStatus.Stale,operation.Status));Assert.All(vm.CamJob.Operations,operation=>Assert.Null(operation.CalculatedToolpath));Assert.Equal(200,vm.NestingJob.SheetTemplate.WidthMm);Assert.Null(vm.NestingJob.AcceptedLayout);Assert.Equal(NestingLayoutStatus.Stale,vm.NestingJob.Status);
+        vm.Undo();Assert.Equal("Before",vm.Document.Job.Name);Assert.Equal(100,vm.Document.Job.WidthMm);Assert.Equal("Before",vm.JobTitle);Assert.Equal(100,vm.NestingJob.SheetTemplate.WidthMm);Assert.All(vm.CamJob.Operations,operation=>Assert.Equal(OperationStatus.Stale,operation.Status));vm.Redo();Assert.Equal("After",vm.Document.Job.Name);Assert.Equal(200,vm.Document.Job.WidthMm);
+    }
+
+    [Fact] public void InvalidOrUnchangedJobSetupCannotMutateTheDocumentOrHistory()
+    {
+        var vm=ViewModel();vm.CreateJob(new JobSettings{Name="Safe",WidthMm=100,HeightMm=80,ThicknessMm=12,SafeZMm=5});vm.UpdateJob(new JobSettings{Name="Safe",WidthMm=100,HeightMm=80,ThicknessMm=12,SafeZMm=5});Assert.False(vm.CanUndo);Assert.Throws<ArgumentException>(()=>vm.UpdateJob(new JobSettings{Name="Bad",WidthMm=double.NaN,HeightMm=80,ThicknessMm=12,SafeZMm=5}));Assert.Equal("Safe",vm.Document.Job.Name);Assert.Equal(100,vm.Document.Job.WidthMm);Assert.False(vm.CanUndo);
     }
 
     [Fact] public void ReacceptingANestReplacesTheInstalledLayoutInsteadOfDuplicatingIt()
