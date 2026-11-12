@@ -59,6 +59,21 @@ public class GuidedWorkspaceTests
         var vm=ViewModel();vm.CreateJob(new JobSettings{WidthMm=100,HeightMm=100});var source=new PolylineEntity{LayerId=vm.Document.ActiveLayerId,Points=[new(10,10),new(50,10),new(50,40)]};vm.AddEntity(source);Assert.True(vm.CanOffsetSelection);vm.OffsetDistance=3;vm.OffsetJoin=CncCad.Cam.Profile.CadOffsetJoin.Miter;vm.OffsetSelection();var offset=Assert.IsType<PolylineEntity>(vm.Document.Entities.Single(entity=>entity.Id!=source.Id));Assert.Equal([new Point2D(10,13),new Point2D(47,13),new Point2D(47,40)],offset.Points);vm.Undo();Assert.Single(vm.Document.Entities);Assert.Same(source,vm.Document.Entities[0]);
     }
 
+    [Fact] public void DuplicateAndPasteRemapGroupsAndCopiedTextGuideLinksWithoutLosingMetadata()
+    {
+        var vm=ViewModel();vm.CreateJob(new JobSettings{WidthMm=200,HeightMm=150});var group=Guid.NewGuid();var sheet=Guid.NewGuid();
+        var guide=new PolylineEntity{LayerId=vm.Document.ActiveLayerId,MaterialSheetId=sheet,GroupId=group,StrokeColor="#123456",IsVisible=false,IsLocked=true,Points=[new(10,10),new(80,10),new(80,50)]};
+        var text=new TextEntity{LayerId=vm.Document.ActiveLayerId,MaterialSheetId=sheet,GroupId=group,StrokeColor="#ABCDEF",Transform=Matrix2D.Rotation(12),Text="Linked",LayoutMode=TextLayoutMode.FollowPath,PathPlacement=new(){GuideEntityId=guide.Id,GuideSnapshot=[..guide.Points]},SourceOutlines=[new(){Start=new(0,0),Segments=[new LinePathSegment(new(5,0))]}],Outlines=[new(){Start=new(10,10),Segments=[new LinePathSegment(new(15,10))]}]};
+        vm.AddEntity(guide);vm.AddEntity(text);vm.Selection.Set([guide.Id,text.Id]);vm.SelectionChanged();vm.DuplicateSelection();
+        var duplicates=vm.Document.Entities.Where(entity=>vm.Selection.Contains(entity.Id)).ToArray();var duplicateGuide=Assert.IsType<PolylineEntity>(duplicates.Single(entity=>entity is PolylineEntity));var duplicateText=Assert.IsType<TextEntity>(duplicates.Single(entity=>entity is TextEntity));
+        Assert.NotEqual(group,duplicateGuide.GroupId);Assert.Equal(duplicateGuide.GroupId,duplicateText.GroupId);Assert.Equal(duplicateGuide.Id,duplicateText.PathPlacement.GuideEntityId);Assert.Equal(sheet,duplicateGuide.MaterialSheetId);Assert.Equal("#123456",duplicateGuide.StrokeColor);Assert.False(duplicateGuide.IsVisible);Assert.True(duplicateGuide.IsLocked);Assert.Equal(new Point2D(20,20),duplicateGuide.Points[0]);
+        vm.Undo();Assert.DoesNotContain(vm.Document.Entities,entity=>entity.Id==duplicateGuide.Id);vm.Redo();Assert.Contains(vm.Document.Entities,entity=>entity.Id==duplicateGuide.Id);
+
+        vm.Selection.Set([guide.Id,text.Id]);vm.SelectionChanged();vm.CopySelection();vm.Paste();var pasted=vm.Document.Entities.Where(entity=>vm.Selection.Contains(entity.Id)).ToArray();var pastedGuide=Assert.IsType<PolylineEntity>(pasted.Single(entity=>entity is PolylineEntity));var pastedText=Assert.IsType<TextEntity>(pasted.Single(entity=>entity is TextEntity));
+        Assert.Equal(pastedGuide.Id,pastedText.PathPlacement.GuideEntityId);Assert.NotEqual(group,pastedGuide.GroupId);Assert.Equal(pastedGuide.GroupId,pastedText.GroupId);Assert.Equal(new Point2D(20,20),pastedGuide.Points[0]);
+        vm.Paste();var secondGuide=Assert.IsType<PolylineEntity>(vm.Document.Entities.Single(entity=>vm.Selection.Contains(entity.Id)&&entity is PolylineEntity));Assert.Equal(new Point2D(30,30),secondGuide.Points[0]);Assert.NotEqual(pastedGuide.GroupId,secondGuide.GroupId);
+    }
+
     [Fact] public void PocketHelixIsExposedOnlyThroughTheContainmentCheckedCalculator()
     {
         var vm=ViewModel();vm.CreateJob(new JobSettings{WidthMm=120,HeightMm=100,ThicknessMm=12});var boundary=new RectangleEntity{LayerId=vm.Document.ActiveLayerId,Origin=new(10,10),Width=80,Height=60};vm.AddEntity(boundary);Assert.Contains(PocketEntryMode.Helix,vm.PocketEntryModes);var pocket=vm.CreatePocketDraft();pocket.EntryMode=PocketEntryMode.Helix;pocket.RampLengthMm=10;pocket.CutDepthMm=2;pocket.PassDepthMm=2;vm.AddOperation(pocket);Assert.Equal(OperationStatus.Current,pocket.Status);Assert.NotEmpty(pocket.CalculatedToolpath!.Moves.OfType<CncCad.Cam.Toolpaths.ArcMove>());

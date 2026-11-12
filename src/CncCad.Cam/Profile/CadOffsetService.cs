@@ -23,7 +23,7 @@ public sealed class CadOffsetService : ICadOffsetService
                 {
                     var contour=ClipperGeometryAdapter.ToContour(entity); var paths=new PathsD{new(contour.Select(p=>new PointD(p.X,p.Y)))};
                     var type=join switch{CadOffsetJoin.Round=>JoinType.Round,CadOffsetJoin.Bevel=>JoinType.Bevel,_=>JoinType.Miter};
-                    foreach(var path in Clipper.InflatePaths(paths,signedDistanceMm,type,EndType.Polygon,6).Where(p=>p.Count>=3)) output.Add(new PolylineEntity{LayerId=entity.LayerId,MaterialSheetId=entity.MaterialSheetId,GroupId=entity.GroupId,StrokeColor=entity.StrokeColor,IsVisible=entity.IsVisible,IsLocked=entity.IsLocked,Points=path.Select(p=>new Point2D(p.x,p.y)).ToList(),IsClosed=true});
+                    foreach(var path in Clipper.InflatePaths(paths,signedDistanceMm,type,EndType.Polygon,6,ClipperGeometryAdapter.DecimalPrecision).Where(p=>p.Count>=3)) output.Add(new PolylineEntity{LayerId=entity.LayerId,MaterialSheetId=entity.MaterialSheetId,GroupId=entity.GroupId,StrokeColor=entity.StrokeColor,IsVisible=entity.IsVisible,IsLocked=entity.IsLocked,Points=path.Select(p=>new Point2D(p.x,p.y)).ToList(),IsClosed=true});
                 }
                 else
                 {

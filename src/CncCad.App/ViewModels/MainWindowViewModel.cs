@@ -506,21 +506,30 @@ public partial class MainWindowViewModel : ViewModelBase
     private void AfterGeometryCommand(IEnumerable<Guid> ids,string message){SelectionChanged();UpdateHistoryState();InvalidateOperations(ids);IsDirty=true;Message=message;}
     public void CopySelection()
     {
-        _clipboard.Clear(); _clipboard.AddRange(Document.Entities.Where(e => Selection.Contains(e.Id)).Select(EntityGeometry.Clone)); _pasteCount = 0;
+        _clipboard.Clear(); _clipboard.AddRange(CloneEntityGraph(Document.Entities.Where(e => Selection.Contains(e.Id)))); _pasteCount = 0;
         HasClipboard = _clipboard.Count > 0; Message = _clipboard.Count == 0 ? "Nothing selected to copy" : $"Copied {_clipboard.Count} entities";
     }
     public void Paste()
     {
         if (_clipboard.Count == 0) return; _pasteCount++;
-        var entities = _clipboard.Select(EntityGeometry.Clone).ToList(); var offset = new Vector2D(10 * _pasteCount, 10 * _pasteCount);
-        foreach (var entity in entities) EntityGeometry.Translate(entity, offset);
+        var entities = CloneEntityGraph(_clipboard, new(10 * _pasteCount, 10 * _pasteCount));
         _history.Execute(new AddEntitiesCommand(Document, entities, "Paste entities")); Selection.Set(entities.Select(e => e.Id)); SelectionChanged(); UpdateHistoryState(); IsDirty = true; Message = $"Pasted {entities.Count} entities";
     }
     public void DuplicateSelection()
     {
-        var entities = Document.Entities.Where(e => Selection.Contains(e.Id)).Select(EntityGeometry.Clone).ToList(); if (entities.Count == 0) return;
-        foreach (var entity in entities) EntityGeometry.Translate(entity, new(10, 10));
+        var entities = CloneEntityGraph(Document.Entities.Where(e => Selection.Contains(e.Id)),new(10,10)); if (entities.Count == 0) return;
         _history.Execute(new AddEntitiesCommand(Document, entities, "Duplicate entities")); Selection.Set(entities.Select(e => e.Id)); SelectionChanged(); UpdateHistoryState(); IsDirty = true; Message = $"Duplicated {entities.Count} entities";
+    }
+    private static List<CadEntity> CloneEntityGraph(IEnumerable<CadEntity> source,Vector2D? translation=null)
+    {
+        var originals=source.ToArray();var clones=originals.Select(EntityGeometry.Clone).ToList();var entityIds=originals.Zip(clones,(original,clone)=>(SourceId:original.Id,CloneId:clone.Id)).ToDictionary(pair=>pair.SourceId,pair=>pair.CloneId);var groups=new Dictionary<Guid,Guid>();
+        foreach(var clone in clones)
+        {
+            if(clone.GroupId is{} group){if(!groups.TryGetValue(group,out var replacement)){replacement=Guid.NewGuid();groups[group]=replacement;}clone.GroupId=replacement;}
+            if(clone is TextEntity text&&text.PathPlacement.GuideEntityId is{} guide&&entityIds.TryGetValue(guide,out var replacementGuide))text.PathPlacement.GuideEntityId=replacementGuide;
+            if(translation is{} delta)EntityGeometry.Translate(clone,delta);
+        }
+        return clones;
     }
     public void UpdateInteraction(SnapResult snap, CncCad.Rendering.Canvas.DrawingMeasurement measurement)
     {
