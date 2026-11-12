@@ -11,6 +11,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/CncCad.Cam.Tests/CncCad.Cam.Tests.csproj" />
+    <Project Path="tests/CncCad.App.HeadlessTests/CncCad.App.HeadlessTests.csproj" />
     <Project Path="tests/CncCad.Core.Tests/CncCad.Core.Tests.csproj" />
     <Project Path="tests/CncCad.PostProcessors.Tests/CncCad.PostProcessors.Tests.csproj" />
   </Folder>

@@ -2,7 +2,7 @@ namespace CncCad.Core.Transforms;
 
 public readonly record struct Point3D(double X, double Y, double Z);
 public readonly record struct ProjectedPoint(double X, double Y, double Depth);
-public enum CameraPreset { Custom, Isometric, Top, Front, Right }
+public enum CameraPreset { Custom, Isometric, Top, Bottom, Front, Back, Left, Right }
 
 public sealed class OrbitCamera
 {
@@ -26,7 +26,16 @@ public sealed class OrbitCamera
     public void ZoomBy(double factor) => Zoom=Math.Clamp(Zoom*factor,.02,500);
     public void SetPreset(CameraPreset preset)
     {
-        Preset=preset; (Yaw,Pitch)=preset switch { CameraPreset.Top => (0,Math.PI/2-.01), CameraPreset.Front => (0,.05), CameraPreset.Right => (Math.PI/2,.05), _ => (-Math.PI/4,.62) };
+        Preset=preset; (Yaw,Pitch)=preset switch
+        {
+            CameraPreset.Top => (0,Math.PI/2-.01),
+            CameraPreset.Bottom => (0,-Math.PI/2+.01),
+            CameraPreset.Front => (0,.05),
+            CameraPreset.Back => (Math.PI,.05),
+            CameraPreset.Left => (-Math.PI/2,.05),
+            CameraPreset.Right => (Math.PI/2,.05),
+            _ => (-Math.PI/4,.62)
+        };
     }
     public void Fit(double width, double height, double thickness, double safeZ, double viewportWidth, double viewportHeight, double padding=70)
     {

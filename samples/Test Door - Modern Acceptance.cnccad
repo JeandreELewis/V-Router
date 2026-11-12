@@ -1,0 +1,1882 @@
+{
+  "version": 8,
+  "document": {
+    "version": 1,
+    "job": {
+      "name": "Test Door",
+      "widthMm": 1000,
+      "heightMm": 2300,
+      "thicknessMm": 50,
+      "displayUnit": "Millimetres",
+      "origin": "Centre",
+      "originOffsetXmm": 0,
+      "originOffsetYmm": 0,
+      "zZero": "MaterialSurface",
+      "safeZMm": 8
+    },
+    "layers": [
+      {
+        "id": "e2535743-efb7-4fc1-9c65-06b506e8c407",
+        "name": "Door Boundary",
+        "isVisible": true,
+        "isLocked": false,
+        "color": "#8DD5F2",
+        "order": 0
+      },
+      {
+        "id": "97cce717-0595-4a28-bc7f-1fbcdbcc2fb7",
+        "name": "Recessed Panel",
+        "isVisible": true,
+        "isLocked": false,
+        "color": "#70E08D",
+        "order": 1
+      },
+      {
+        "id": "217e5525-c795-4d05-bea5-d2c7f21b6b00",
+        "name": "Flutes",
+        "isVisible": true,
+        "isLocked": false,
+        "color": "#E5C56B",
+        "order": 2
+      },
+      {
+        "id": "c3ee5d42-dbff-4df2-b8f3-797a1f9125f8",
+        "name": "Hardware",
+        "isVisible": true,
+        "isLocked": false,
+        "color": "#FF8C42",
+        "order": 3
+      },
+      {
+        "id": "4931273a-f843-4830-a8be-4ab5a84af8cc",
+        "name": "Lettering",
+        "isVisible": true,
+        "isLocked": false,
+        "color": "#B98CFF",
+        "order": 4
+      },
+      {
+        "id": "0362fe69-4656-473a-a047-97ac76b6440c",
+        "name": "QA Geometry",
+        "isVisible": false,
+        "isLocked": true,
+        "color": "#7D8B94",
+        "order": 5
+      }
+    ],
+    "entities": [
+      {
+        "type": "polyline",
+        "points": [
+          {
+            "x": 960,
+            "y": 2236
+          },
+          {
+            "x": 958.1731087802709,
+            "y": 2245.184402376762
+          },
+          {
+            "x": 952.9705627484772,
+            "y": 2252.9705627484773
+          },
+          {
+            "x": 945.1844023767621,
+            "y": 2258.173108780271
+          },
+          {
+            "x": 936,
+            "y": 2260
+          },
+          {
+            "x": 64,
+            "y": 2260
+          },
+          {
+            "x": 54.81559762323785,
+            "y": 2258.173108780271
+          },
+          {
+            "x": 47.029437251522864,
+            "y": 2252.9705627484773
+          },
+          {
+            "x": 41.82689121972912,
+            "y": 2245.184402376762
+          },
+          {
+            "x": 40,
+            "y": 2236
+          },
+          {
+            "x": 40,
+            "y": 64
+          },
+          {
+            "x": 41.82689121972911,
+            "y": 54.815597623237856
+          },
+          {
+            "x": 47.02943725152286,
+            "y": 47.029437251522864
+          },
+          {
+            "x": 54.81559762323785,
+            "y": 41.82689121972912
+          },
+          {
+            "x": 63.99999999999999,
+            "y": 40
+          },
+          {
+            "x": 936,
+            "y": 40
+          },
+          {
+            "x": 945.1844023767621,
+            "y": 41.82689121972912
+          },
+          {
+            "x": 952.9705627484772,
+            "y": 47.02943725152286
+          },
+          {
+            "x": 958.1731087802709,
+            "y": 54.81559762323785
+          },
+          {
+            "x": 960,
+            "y": 63.99999999999999
+          }
+        ],
+        "isClosed": true,
+        "id": "9084eb8d-9abd-4a4a-98b3-6673f374694b",
+        "layerId": "e2535743-efb7-4fc1-9c65-06b506e8c407",
+        "materialSheetId": null,
+        "groupId": null,
+        "strokeColor": null,
+        "isVisible": true,
+        "isLocked": false,
+        "transform": {
+          "m11": 1,
+          "m12": 0,
+          "m21": 0,
+          "m22": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "type": "polyline",
+        "points": [
+          {
+            "x": 900,
+            "y": 1664
+          },
+          {
+            "x": 897.2596631704063,
+            "y": 1677.7766035651432
+          },
+          {
+            "x": 889.4558441227157,
+            "y": 1689.4558441227157
+          },
+          {
+            "x": 877.7766035651432,
+            "y": 1697.2596631704064
+          },
+          {
+            "x": 864,
+            "y": 1700
+          },
+          {
+            "x": 466,
+            "y": 1700
+          },
+          {
+            "x": 452.2233964348568,
+            "y": 1697.2596631704064
+          },
+          {
+            "x": 440.5441558772843,
+            "y": 1689.4558441227157
+          },
+          {
+            "x": 432.7403368295937,
+            "y": 1677.7766035651432
+          },
+          {
+            "x": 430,
+            "y": 1664
+          },
+          {
+            "x": 430,
+            "y": 336
+          },
+          {
+            "x": 432.7403368295937,
+            "y": 322.2233964348568
+          },
+          {
+            "x": 440.5441558772843,
+            "y": 310.5441558772843
+          },
+          {
+            "x": 452.2233964348568,
+            "y": 302.7403368295937
+          },
+          {
+            "x": 466,
+            "y": 300
+          },
+          {
+            "x": 864,
+            "y": 300
+          },
+          {
+            "x": 877.7766035651432,
+            "y": 302.7403368295937
+          },
+          {
+            "x": 889.4558441227157,
+            "y": 310.5441558772843
+          },
+          {
+            "x": 897.2596631704064,
+            "y": 322.2233964348568
+          },
+          {
+            "x": 900,
+            "y": 336
+          }
+        ],
+        "isClosed": true,
+        "id": "7c381541-45eb-4f60-985f-c366b1645da9",
+        "layerId": "97cce717-0595-4a28-bc7f-1fbcdbcc2fb7",
+        "materialSheetId": null,
+        "groupId": null,
+        "strokeColor": null,
+        "isVisible": true,
+        "isLocked": false,
+        "transform": {
+          "m11": 1,
+          "m12": 0,
+          "m21": 0,
+          "m22": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "type": "polyline",
+        "points": [
+          {
+            "x": 860,
+            "y": 1472
+          },
+          {
+            "x": 857.868626910316,
+            "y": 1482.7151361062224
+          },
+          {
+            "x": 851.7989898732234,
+            "y": 1491.7989898732233
+          },
+          {
+            "x": 842.7151361062225,
+            "y": 1497.868626910316
+          },
+          {
+            "x": 832,
+            "y": 1500
+          },
+          {
+            "x": 778,
+            "y": 1500
+          },
+          {
+            "x": 767.2848638937775,
+            "y": 1497.868626910316
+          },
+          {
+            "x": 758.2010101267766,
+            "y": 1491.7989898732233
+          },
+          {
+            "x": 752.131373089684,
+            "y": 1482.7151361062224
+          },
+          {
+            "x": 750,
+            "y": 1472
+          },
+          {
+            "x": 750,
+            "y": 528
+          },
+          {
+            "x": 752.131373089684,
+            "y": 517.2848638937775
+          },
+          {
+            "x": 758.2010101267766,
+            "y": 508.2010101267767
+          },
+          {
+            "x": 767.2848638937775,
+            "y": 502.13137308968396
+          },
+          {
+            "x": 778,
+            "y": 500
+          },
+          {
+            "x": 832,
+            "y": 500
+          },
+          {
+            "x": 842.7151361062225,
+            "y": 502.13137308968396
+          },
+          {
+            "x": 851.7989898732234,
+            "y": 508.2010101267767
+          },
+          {
+            "x": 857.868626910316,
+            "y": 517.2848638937775
+          },
+          {
+            "x": 860,
+            "y": 528
+          }
+        ],
+        "isClosed": true,
+        "id": "d8ad636f-0405-4402-bff8-8ff67dd3318f",
+        "layerId": "97cce717-0595-4a28-bc7f-1fbcdbcc2fb7",
+        "materialSheetId": null,
+        "groupId": null,
+        "strokeColor": null,
+        "isVisible": true,
+        "isLocked": false,
+        "transform": {
+          "m11": 1,
+          "m12": 0,
+          "m21": 0,
+          "m22": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "type": "line",
+        "start": {
+          "x": 110,
+          "y": 260
+        },
+        "end": {
+          "x": 110,
+          "y": 2040
+        },
+        "id": "d047bb5e-925c-4971-9fff-10fb8b02da4e",
+        "layerId": "217e5525-c795-4d05-bea5-d2c7f21b6b00",
+        "materialSheetId": null,
+        "groupId": null,
+        "strokeColor": null,
+        "isVisible": true,
+        "isLocked": false,
+        "transform": {
+          "m11": 1,
+          "m12": 0,
+          "m21": 0,
+          "m22": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "type": "line",
+        "start": {
+          "x": 135,
+          "y": 260
+        },
+        "end": {
+          "x": 135,
+          "y": 2040
+        },
+        "id": "aaf79e8b-17b5-476c-b4b2-476b3a93702d",
+        "layerId": "217e5525-c795-4d05-bea5-d2c7f21b6b00",
+        "materialSheetId": null,
+        "groupId": null,
+        "strokeColor": null,
+        "isVisible": true,
+        "isLocked": false,
+        "transform": {
+          "m11": 1,
+          "m12": 0,
+          "m21": 0,
+          "m22": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "type": "line",
+        "start": {
+          "x": 160,
+          "y": 260
+        },
+        "end": {
+          "x": 160,
+          "y": 2040
+        },
+        "id": "d16766ca-b157-4e44-baaa-39c47ec8fb02",
+        "layerId": "217e5525-c795-4d05-bea5-d2c7f21b6b00",
+        "materialSheetId": null,
+        "groupId": null,
+        "strokeColor": null,
+        "isVisible": true,
+        "isLocked": false,
+        "transform": {
+          "m11": 1,
+          "m12": 0,
+          "m21": 0,
+          "m22": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "type": "line",
+        "start": {
+          "x": 185,
+          "y": 260
+        },
+        "end": {
+          "x": 185,
+          "y": 2040
+        },
+        "id": "65d35a9c-f415-4342-82c8-d33d5c450322",
+        "layerId": "217e5525-c795-4d05-bea5-d2c7f21b6b00",
+        "materialSheetId": null,
+        "groupId": null,
+        "strokeColor": null,
+        "isVisible": true,
+        "isLocked": false,
+        "transform": {
+          "m11": 1,
+          "m12": 0,
+          "m21": 0,
+          "m22": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "type": "line",
+        "start": {
+          "x": 210,
+          "y": 260
+        },
+        "end": {
+          "x": 210,
+          "y": 2040
+        },
+        "id": "4e3fcc60-d001-4258-a33a-a67d364801b8",
+        "layerId": "217e5525-c795-4d05-bea5-d2c7f21b6b00",
+        "materialSheetId": null,
+        "groupId": null,
+        "strokeColor": null,
+        "isVisible": true,
+        "isLocked": false,
+        "transform": {
+          "m11": 1,
+          "m12": 0,
+          "m21": 0,
+          "m22": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "type": "line",
+        "start": {
+          "x": 235,
+          "y": 260
+        },
+        "end": {
+          "x": 235,
+          "y": 2040
+        },
+        "id": "ef24db1c-8115-44b1-bc5f-b9d48547e839",
+        "layerId": "217e5525-c795-4d05-bea5-d2c7f21b6b00",
+        "materialSheetId": null,
+        "groupId": null,
+        "strokeColor": null,
+        "isVisible": true,
+        "isLocked": false,
+        "transform": {
+          "m11": 1,
+          "m12": 0,
+          "m21": 0,
+          "m22": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "type": "line",
+        "start": {
+          "x": 260,
+          "y": 260
+        },
+        "end": {
+          "x": 260,
+          "y": 2040
+        },
+        "id": "8ddcaeeb-b1f6-4506-9bc0-c59fbb80dbe6",
+        "layerId": "217e5525-c795-4d05-bea5-d2c7f21b6b00",
+        "materialSheetId": null,
+        "groupId": null,
+        "strokeColor": null,
+        "isVisible": true,
+        "isLocked": false,
+        "transform": {
+          "m11": 1,
+          "m12": 0,
+          "m21": 0,
+          "m22": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "type": "line",
+        "start": {
+          "x": 285,
+          "y": 260
+        },
+        "end": {
+          "x": 285,
+          "y": 2040
+        },
+        "id": "511aabf2-ee29-4804-bf84-a30e006bf11e",
+        "layerId": "217e5525-c795-4d05-bea5-d2c7f21b6b00",
+        "materialSheetId": null,
+        "groupId": null,
+        "strokeColor": null,
+        "isVisible": true,
+        "isLocked": false,
+        "transform": {
+          "m11": 1,
+          "m12": 0,
+          "m21": 0,
+          "m22": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "type": "line",
+        "start": {
+          "x": 310,
+          "y": 260
+        },
+        "end": {
+          "x": 310,
+          "y": 2040
+        },
+        "id": "1be64c20-fc06-4199-bf0b-1e682c808300",
+        "layerId": "217e5525-c795-4d05-bea5-d2c7f21b6b00",
+        "materialSheetId": null,
+        "groupId": null,
+        "strokeColor": null,
+        "isVisible": true,
+        "isLocked": false,
+        "transform": {
+          "m11": 1,
+          "m12": 0,
+          "m21": 0,
+          "m22": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "type": "line",
+        "start": {
+          "x": 335,
+          "y": 260
+        },
+        "end": {
+          "x": 335,
+          "y": 2040
+        },
+        "id": "03faa87b-e5f8-4b46-9574-07da384b0c19",
+        "layerId": "217e5525-c795-4d05-bea5-d2c7f21b6b00",
+        "materialSheetId": null,
+        "groupId": null,
+        "strokeColor": null,
+        "isVisible": true,
+        "isLocked": false,
+        "transform": {
+          "m11": 1,
+          "m12": 0,
+          "m21": 0,
+          "m22": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "type": "line",
+        "start": {
+          "x": 360,
+          "y": 260
+        },
+        "end": {
+          "x": 360,
+          "y": 2040
+        },
+        "id": "d3a258d0-af4a-4dce-869e-0d81337893e1",
+        "layerId": "217e5525-c795-4d05-bea5-d2c7f21b6b00",
+        "materialSheetId": null,
+        "groupId": null,
+        "strokeColor": null,
+        "isVisible": true,
+        "isLocked": false,
+        "transform": {
+          "m11": 1,
+          "m12": 0,
+          "m21": 0,
+          "m22": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "type": "drillPoint",
+        "position": {
+          "x": 805,
+          "y": 650
+        },
+        "id": "b60683dc-6187-4cde-929f-3385ab8f77cc",
+        "layerId": "c3ee5d42-dbff-4df2-b8f3-797a1f9125f8",
+        "materialSheetId": null,
+        "groupId": "8b89ba91-8f67-4e02-bf0a-84cfd607c40c",
+        "strokeColor": null,
+        "isVisible": true,
+        "isLocked": false,
+        "transform": {
+          "m11": 1,
+          "m12": 0,
+          "m21": 0,
+          "m22": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "type": "drillPoint",
+        "position": {
+          "x": 805,
+          "y": 1350
+        },
+        "id": "02153375-e69e-4fc0-9c73-275e978b3d09",
+        "layerId": "c3ee5d42-dbff-4df2-b8f3-797a1f9125f8",
+        "materialSheetId": null,
+        "groupId": "8b89ba91-8f67-4e02-bf0a-84cfd607c40c",
+        "strokeColor": null,
+        "isVisible": true,
+        "isLocked": false,
+        "transform": {
+          "m11": 1,
+          "m12": 0,
+          "m21": 0,
+          "m22": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "type": "circle",
+        "center": {
+          "x": 805,
+          "y": 1810
+        },
+        "radius": 18,
+        "id": "af955726-3357-46c5-b80a-f7aab02cfde4",
+        "layerId": "c3ee5d42-dbff-4df2-b8f3-797a1f9125f8",
+        "materialSheetId": null,
+        "groupId": null,
+        "strokeColor": null,
+        "isVisible": true,
+        "isLocked": false,
+        "transform": {
+          "m11": 1,
+          "m12": 0,
+          "m21": 0,
+          "m22": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "type": "arc",
+        "center": {
+          "x": 805,
+          "y": 1810
+        },
+        "radius": 42,
+        "startAngleDegrees": 200,
+        "sweepAngleDegrees": 140,
+        "id": "8779af6e-2e7f-4ea3-9e34-b4df31964e4c",
+        "layerId": "c3ee5d42-dbff-4df2-b8f3-797a1f9125f8",
+        "materialSheetId": null,
+        "groupId": null,
+        "strokeColor": null,
+        "isVisible": true,
+        "isLocked": false,
+        "transform": {
+          "m11": 1,
+          "m12": 0,
+          "m21": 0,
+          "m22": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "type": "text",
+        "text": "23",
+        "fontFamily": "V-Router Seven Segment",
+        "fontStyle": "Regular",
+        "sizeMm": 105,
+        "letterSpacingMm": 0,
+        "lineSpacing": 1.2,
+        "alignment": "Left",
+        "fontKind": "Stencil",
+        "layoutMode": "Straight",
+        "pathPlacement": {
+          "guideEntityId": null,
+          "startOffset": 0,
+          "baselineOffsetMm": 0,
+          "reverseDirection": false,
+          "flipSide": false,
+          "keepUpright": true,
+          "fitMode": "Natural",
+          "guideSnapshot": []
+        },
+        "glyphAdvancesMm": [
+          86.1,
+          86.1
+        ],
+        "sourceOutlines": [
+          {
+            "start": {
+              "x": 623,
+              "y": 2017
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 647.9,
+                  "y": 2017
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 647.9,
+                  "y": 2035
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 623,
+                  "y": 2035
+                }
+              }
+            ],
+            "isClosed": true
+          },
+          {
+            "start": {
+              "x": 647.9,
+              "y": 1982.5
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 665.9,
+                  "y": 1982.5
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 665.9,
+                  "y": 2017
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 647.9,
+                  "y": 2017
+                }
+              }
+            ],
+            "isClosed": true
+          },
+          {
+            "start": {
+              "x": 623,
+              "y": 1973.5
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 647.9,
+                  "y": 1973.5
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 647.9,
+                  "y": 1991.5
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 623,
+                  "y": 1991.5
+                }
+              }
+            ],
+            "isClosed": true
+          },
+          {
+            "start": {
+              "x": 605,
+              "y": 1948
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 623,
+                  "y": 1948
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 623,
+                  "y": 1982.5
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 605,
+                  "y": 1982.5
+                }
+              }
+            ],
+            "isClosed": true
+          },
+          {
+            "start": {
+              "x": 623,
+              "y": 1930
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 647.9,
+                  "y": 1930
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 647.9,
+                  "y": 1948
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 623,
+                  "y": 1948
+                }
+              }
+            ],
+            "isClosed": true
+          },
+          {
+            "start": {
+              "x": 709.1,
+              "y": 2017
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 734,
+                  "y": 2017
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 734,
+                  "y": 2035
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 709.1,
+                  "y": 2035
+                }
+              }
+            ],
+            "isClosed": true
+          },
+          {
+            "start": {
+              "x": 734,
+              "y": 1982.5
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 752,
+                  "y": 1982.5
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 752,
+                  "y": 2017
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 734,
+                  "y": 2017
+                }
+              }
+            ],
+            "isClosed": true
+          },
+          {
+            "start": {
+              "x": 709.1,
+              "y": 1973.5
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 734,
+                  "y": 1973.5
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 734,
+                  "y": 1991.5
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 709.1,
+                  "y": 1991.5
+                }
+              }
+            ],
+            "isClosed": true
+          },
+          {
+            "start": {
+              "x": 734,
+              "y": 1948
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 752,
+                  "y": 1948
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 752,
+                  "y": 1982.5
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 734,
+                  "y": 1982.5
+                }
+              }
+            ],
+            "isClosed": true
+          },
+          {
+            "start": {
+              "x": 709.1,
+              "y": 1930
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 734,
+                  "y": 1930
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 734,
+                  "y": 1948
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 709.1,
+                  "y": 1948
+                }
+              }
+            ],
+            "isClosed": true
+          }
+        ],
+        "outlines": [
+          {
+            "start": {
+              "x": 623,
+              "y": 2017
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 647.9,
+                  "y": 2017
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 647.9,
+                  "y": 2035
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 623,
+                  "y": 2035
+                }
+              }
+            ],
+            "isClosed": true
+          },
+          {
+            "start": {
+              "x": 647.9,
+              "y": 1982.5
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 665.9,
+                  "y": 1982.5
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 665.9,
+                  "y": 2017
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 647.9,
+                  "y": 2017
+                }
+              }
+            ],
+            "isClosed": true
+          },
+          {
+            "start": {
+              "x": 623,
+              "y": 1973.5
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 647.9,
+                  "y": 1973.5
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 647.9,
+                  "y": 1991.5
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 623,
+                  "y": 1991.5
+                }
+              }
+            ],
+            "isClosed": true
+          },
+          {
+            "start": {
+              "x": 605,
+              "y": 1948
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 623,
+                  "y": 1948
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 623,
+                  "y": 1982.5
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 605,
+                  "y": 1982.5
+                }
+              }
+            ],
+            "isClosed": true
+          },
+          {
+            "start": {
+              "x": 623,
+              "y": 1930
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 647.9,
+                  "y": 1930
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 647.9,
+                  "y": 1948
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 623,
+                  "y": 1948
+                }
+              }
+            ],
+            "isClosed": true
+          },
+          {
+            "start": {
+              "x": 709.1,
+              "y": 2017
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 734,
+                  "y": 2017
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 734,
+                  "y": 2035
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 709.1,
+                  "y": 2035
+                }
+              }
+            ],
+            "isClosed": true
+          },
+          {
+            "start": {
+              "x": 734,
+              "y": 1982.5
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 752,
+                  "y": 1982.5
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 752,
+                  "y": 2017
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 734,
+                  "y": 2017
+                }
+              }
+            ],
+            "isClosed": true
+          },
+          {
+            "start": {
+              "x": 709.1,
+              "y": 1973.5
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 734,
+                  "y": 1973.5
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 734,
+                  "y": 1991.5
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 709.1,
+                  "y": 1991.5
+                }
+              }
+            ],
+            "isClosed": true
+          },
+          {
+            "start": {
+              "x": 734,
+              "y": 1948
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 752,
+                  "y": 1948
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 752,
+                  "y": 1982.5
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 734,
+                  "y": 1982.5
+                }
+              }
+            ],
+            "isClosed": true
+          },
+          {
+            "start": {
+              "x": 709.1,
+              "y": 1930
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 734,
+                  "y": 1930
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 734,
+                  "y": 1948
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 709.1,
+                  "y": 1948
+                }
+              }
+            ],
+            "isClosed": true
+          }
+        ],
+        "glyphs": [],
+        "id": "c2f57791-2a38-4bf7-9638-bd059e7d2442",
+        "layerId": "4931273a-f843-4830-a8be-4ab5a84af8cc",
+        "materialSheetId": null,
+        "groupId": null,
+        "strokeColor": null,
+        "isVisible": true,
+        "isLocked": false,
+        "transform": {
+          "m11": 1,
+          "m12": 0,
+          "m21": 0,
+          "m22": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      },
+      {
+        "type": "text",
+        "text": "VR",
+        "fontFamily": "V-Router Single Line",
+        "fontStyle": "Regular",
+        "sizeMm": 42,
+        "letterSpacingMm": 0,
+        "lineSpacing": 1.2,
+        "alignment": "Left",
+        "fontKind": "SingleLine",
+        "layoutMode": "Straight",
+        "pathPlacement": {
+          "guideEntityId": null,
+          "startOffset": 0,
+          "baselineOffsetMm": 0,
+          "reverseDirection": false,
+          "flipSide": false,
+          "keepUpright": true,
+          "fitMode": "Natural",
+          "guideSnapshot": []
+        },
+        "glyphAdvancesMm": [
+          35.7,
+          27.3
+        ],
+        "sourceOutlines": [
+          {
+            "start": {
+              "x": 90,
+              "y": 157
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 103.65,
+                  "y": 115
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 117.3,
+                  "y": 157
+                }
+              }
+            ],
+            "isClosed": false
+          },
+          {
+            "start": {
+              "x": 125.7,
+              "y": 115
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 125.7,
+                  "y": 157
+                }
+              }
+            ],
+            "isClosed": false
+          },
+          {
+            "start": {
+              "x": 125.7,
+              "y": 157
+            },
+            "segments": [
+              {
+                "kind": "cubic",
+                "control1": {
+                  "x": 155.73000000000002,
+                  "y": 157
+                },
+                "control2": {
+                  "x": 155.73000000000002,
+                  "y": 136
+                },
+                "end": {
+                  "x": 125.7,
+                  "y": 136
+                }
+              }
+            ],
+            "isClosed": false
+          },
+          {
+            "start": {
+              "x": 125.7,
+              "y": 136
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 153,
+                  "y": 115
+                }
+              }
+            ],
+            "isClosed": false
+          }
+        ],
+        "outlines": [
+          {
+            "start": {
+              "x": 90,
+              "y": 157
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 103.65,
+                  "y": 115
+                }
+              },
+              {
+                "kind": "line",
+                "end": {
+                  "x": 117.3,
+                  "y": 157
+                }
+              }
+            ],
+            "isClosed": false
+          },
+          {
+            "start": {
+              "x": 125.7,
+              "y": 115
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 125.7,
+                  "y": 157
+                }
+              }
+            ],
+            "isClosed": false
+          },
+          {
+            "start": {
+              "x": 125.7,
+              "y": 157
+            },
+            "segments": [
+              {
+                "kind": "cubic",
+                "control1": {
+                  "x": 155.73000000000002,
+                  "y": 157
+                },
+                "control2": {
+                  "x": 155.73000000000002,
+                  "y": 136
+                },
+                "end": {
+                  "x": 125.7,
+                  "y": 136
+                }
+              }
+            ],
+            "isClosed": false
+          },
+          {
+            "start": {
+              "x": 125.7,
+              "y": 136
+            },
+            "segments": [
+              {
+                "kind": "line",
+                "end": {
+                  "x": 153,
+                  "y": 115
+                }
+              }
+            ],
+            "isClosed": false
+          }
+        ],
+        "glyphs": [],
+        "id": "969d8f86-9110-433b-bc55-e2c97bcca31a",
+        "layerId": "4931273a-f843-4830-a8be-4ab5a84af8cc",
+        "materialSheetId": null,
+        "groupId": null,
+        "strokeColor": null,
+        "isVisible": true,
+        "isLocked": false,
+        "transform": {
+          "m11": 1,
+          "m12": 0,
+          "m21": 0,
+          "m22": 1,
+          "offsetX": 0,
+          "offsetY": 0
+        }
+      }
+    ],
+    "activeLayerId": "e2535743-efb7-4fc1-9c65-06b506e8c407",
+    "activeLayer": {
+      "id": "e2535743-efb7-4fc1-9c65-06b506e8c407",
+      "name": "Door Boundary",
+      "isVisible": true,
+      "isLocked": false,
+      "color": "#8DD5F2",
+      "order": 0
+    }
+  },
+  "camJob": {
+    "operations": [
+      {
+        "type": "profile",
+        "side": "OnVector",
+        "direction": "Climb",
+        "startDepthMm": 0,
+        "cutDepthMm": 3,
+        "passDepthMm": 1.5,
+        "allowanceMm": 0,
+        "startPointFraction": 0.125,
+        "leadInLengthMm": 8,
+        "leadOutLengthMm": 5,
+        "rampLengthMm": 0,
+        "lastPassDepthMm": 0.5,
+        "safeZMm": 8,
+        "feedRateMmPerMin": 1800,
+        "plungeRateMmPerMin": 500,
+        "spindleRpm": 18000,
+        "materialSheetId": null,
+        "tabs": {
+          "enabled": false,
+          "placementMode": "Automatic",
+          "style": "Ramped",
+          "automaticCount": 4,
+          "widthMm": 10,
+          "remainingHeightMm": 1.5,
+          "rampLengthMm": 5,
+          "exclusionDistanceMm": 3,
+          "manualPlacements": []
+        },
+        "id": "d91fbd84-40ca-4098-a7e8-40ae77ac3850",
+        "name": "Shallow Perimeter Profile",
+        "geometryIds": [
+          "9084eb8d-9abd-4a4a-98b3-6673f374694b",
+          "af955726-3357-46c5-b80a-f7aab02cfde4"
+        ],
+        "tool": {
+          "sourceToolId": "95ed814b-a798-18bd-42ee-fb8b411197ab",
+          "name": "6mm End Mill",
+          "toolNumber": 2,
+          "type": "EndMill",
+          "diameterMm": 6,
+          "feedRateMmPerMin": 1800,
+          "plungeRateMmPerMin": 600,
+          "spindleRpm": 18000,
+          "stepDownMm": 3,
+          "cuttingLengthMm": 24,
+          "overallLengthMm": 50,
+          "shankDiameterMm": 6,
+          "stickOutMm": 30,
+          "vBitAngleDegrees": null,
+          "tipDiameterMm": null
+        },
+        "isEnabled": true,
+        "order": 0
+      },
+      {
+        "type": "pocket",
+        "startDepthMm": 0,
+        "cutDepthMm": 5,
+        "passDepthMm": 2.5,
+        "stepOverMm": 4.8,
+        "allowanceMm": 0.2,
+        "direction": "Climb",
+        "entryMode": "LinearRamp",
+        "rampLengthMm": 40,
+        "safeZMm": 8,
+        "feedRateMmPerMin": 2200,
+        "plungeRateMmPerMin": 550,
+        "spindleRpm": 18000,
+        "materialSheetId": null,
+        "id": "a14c0169-85b5-411d-8d8e-c471e0bbb483",
+        "name": "Asymmetric Recessed Panel",
+        "geometryIds": [
+          "7c381541-45eb-4f60-985f-c366b1645da9",
+          "d8ad636f-0405-4402-bff8-8ff67dd3318f"
+        ],
+        "tool": {
+          "sourceToolId": "7647624a-39a3-4a04-1639-0e1d104ecaed",
+          "name": "12mm End Mill",
+          "toolNumber": 4,
+          "type": "EndMill",
+          "diameterMm": 12,
+          "feedRateMmPerMin": 2400,
+          "plungeRateMmPerMin": 600,
+          "spindleRpm": 18000,
+          "stepDownMm": 5,
+          "cuttingLengthMm": 48,
+          "overallLengthMm": 80,
+          "shankDiameterMm": 12,
+          "stickOutMm": 60,
+          "vBitAngleDegrees": null,
+          "tipDiameterMm": null
+        },
+        "isEnabled": true,
+        "order": 1
+      },
+      {
+        "type": "drill",
+        "cycle": "Peck",
+        "ordering": "Optimized",
+        "cutDepthMm": 18,
+        "peckDepthMm": 4.5,
+        "safeZMm": 8,
+        "retractZMm": 2,
+        "dwellSeconds": 0.2,
+        "plungeRateMmPerMin": 280,
+        "spindleRpm": 15000,
+        "materialSheetId": null,
+        "id": "9f7933c2-71b8-47d9-98d3-92b1067186ee",
+        "name": "Pull Handle Pilot Bores",
+        "geometryIds": [
+          "b60683dc-6187-4cde-929f-3385ab8f77cc",
+          "02153375-e69e-4fc0-9c73-275e978b3d09"
+        ],
+        "tool": {
+          "sourceToolId": "cba6b898-2ef1-3542-b958-4ae5f967bbf7",
+          "name": "5mm Drill",
+          "toolNumber": 9,
+          "type": "Drill",
+          "diameterMm": 5,
+          "feedRateMmPerMin": 500,
+          "plungeRateMmPerMin": 300,
+          "spindleRpm": 18000,
+          "stepDownMm": 3,
+          "cuttingLengthMm": 20,
+          "overallLengthMm": 45,
+          "shankDiameterMm": 5,
+          "stickOutMm": 25,
+          "vBitAngleDegrees": null,
+          "tipDiameterMm": null
+        },
+        "isEnabled": true,
+        "order": 2
+      },
+      {
+        "type": "engrave",
+        "direction": "Optimize",
+        "startDepthMm": 0,
+        "cutDepthMm": 2,
+        "passDepthMm": 1,
+        "safeZMm": 8,
+        "feedRateMmPerMin": 1000,
+        "plungeRateMmPerMin": 280,
+        "spindleRpm": 18000,
+        "materialSheetId": null,
+        "id": "8aee7f57-e45f-4496-a87a-e51df75b2c1c",
+        "name": "Flutes and VR Maker Mark",
+        "geometryIds": [
+          "d047bb5e-925c-4971-9fff-10fb8b02da4e",
+          "aaf79e8b-17b5-476c-b4b2-476b3a93702d",
+          "d16766ca-b157-4e44-baaa-39c47ec8fb02",
+          "65d35a9c-f415-4342-82c8-d33d5c450322",
+          "4e3fcc60-d001-4258-a33a-a67d364801b8",
+          "ef24db1c-8115-44b1-bc5f-b9d48547e839",
+          "8ddcaeeb-b1f6-4506-9bc0-c59fbb80dbe6",
+          "511aabf2-ee29-4804-bf84-a30e006bf11e",
+          "1be64c20-fc06-4199-bf0b-1e682c808300",
+          "03faa87b-e5f8-4b46-9574-07da384b0c19",
+          "d3a258d0-af4a-4dce-869e-0d81337893e1",
+          "8779af6e-2e7f-4ea3-9e34-b4df31964e4c",
+          "969d8f86-9110-433b-bc55-e2c97bcca31a"
+        ],
+        "tool": {
+          "sourceToolId": "7fde002c-cc6d-a3e8-bfe0-dd1cde26ada4",
+          "name": "3.175mm Engraving Bit",
+          "toolNumber": 6,
+          "type": "EngravingBit",
+          "diameterMm": 3.175,
+          "feedRateMmPerMin": 1000,
+          "plungeRateMmPerMin": 300,
+          "spindleRpm": 18000,
+          "stepDownMm": 1,
+          "cuttingLengthMm": 12.7,
+          "overallLengthMm": 40,
+          "shankDiameterMm": 3.175,
+          "stickOutMm": 20,
+          "vBitAngleDegrees": null,
+          "tipDiameterMm": null
+        },
+        "isEnabled": true,
+        "order": 3
+      },
+      {
+        "type": "vcarve",
+        "maximumDepthMm": 3,
+        "clearFlatRegions": true,
+        "offsetStepOverMm": 0.8,
+        "safeZMm": 8,
+        "feedRateMmPerMin": 1100,
+        "plungeRateMmPerMin": 320,
+        "spindleRpm": 18000,
+        "materialSheetId": null,
+        "id": "fc323247-7d54-45b5-b1b0-dfd956b57bac",
+        "name": "House Number 23",
+        "geometryIds": [
+          "c2f57791-2a38-4bf7-9638-bd059e7d2442"
+        ],
+        "tool": {
+          "sourceToolId": "39f5a864-d4a3-17e1-53d0-486e0baaa496",
+          "name": "60 Degree V-Bit",
+          "toolNumber": 7,
+          "type": "VBit",
+          "diameterMm": 12,
+          "feedRateMmPerMin": 1200,
+          "plungeRateMmPerMin": 350,
+          "spindleRpm": 18000,
+          "stepDownMm": 2,
+          "cuttingLengthMm": 48,
+          "overallLengthMm": 80,
+          "shankDiameterMm": 12,
+          "stickOutMm": 60,
+          "vBitAngleDegrees": 60,
+          "tipDiameterMm": 0.2
+        },
+        "isEnabled": true,
+        "order": 4
+      }
+    ],
+    "machine": {
+      "sourceMachineId": "419a2f7e-a93e-4f8d-9eec-6702974d318e",
+      "name": "1200 \u00D7 1200 CNC Router",
+      "minimumXmm": -1200,
+      "maximumXmm": 1200,
+      "minimumYmm": -1200,
+      "maximumYmm": 1200,
+      "minimumZmm": -150,
+      "maximumZmm": 50,
+      "rapidRateMmPerMin": 5000,
+      "maximumSpindleRpm": 24000,
+      "defaultClearanceMm": 8,
+      "holderDiameterMm": 35,
+      "holderLengthMm": 45,
+      "toolChangeXmm": 0,
+      "toolChangeYmm": 0,
+      "parkXmm": 0,
+      "parkYmm": 0,
+      "allowedSpoilboardDepthMm": 0.5,
+      "postProcessorId": "uccnc-mm",
+      "isComplete": true
+    },
+    "material": {
+      "sourceMaterialId": "00000000-0000-0000-0000-000000000000",
+      "name": "Hardwood",
+      "category": "Solid wood"
+    },
+    "fixtures": [],
+    "safetySetupIncomplete": false
+  },
+  "nesting": {
+    "parts": [],
+    "sheetTemplate": {
+      "id": "83d22948-87b4-4d89-be01-00620ba04bab",
+      "name": "Sheet",
+      "widthMm": 600,
+      "heightMm": 400,
+      "thicknessMm": 18,
+      "quantity": 100
+    },
+    "partSpacingMm": 5,
+    "edgeMarginMm": 10,
+    "seed": 1729,
+    "status": "Stale",
+    "acceptedLayout": null
+  },
+  "previewSettings": {
+    "style": "Material",
+    "materialPreset": "Hardwood",
+    "grainDirection": "AlongStockY",
+    "tintHex": null
+  }
+}

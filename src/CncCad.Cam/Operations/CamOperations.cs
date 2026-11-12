@@ -51,6 +51,8 @@ public sealed record ToolSnapshot
 [JsonDerivedType(typeof(ProfileOperationDefinition), "profile")]
 [JsonDerivedType(typeof(EngraveOperationDefinition), "engrave")]
 [JsonDerivedType(typeof(VCarveOperationDefinition), "vcarve")]
+[JsonDerivedType(typeof(PocketOperationDefinition), "pocket")]
+[JsonDerivedType(typeof(DrillOperationDefinition), "drill")]
 public abstract class CamOperationDefinition
 {
     public Guid Id { get; init; } = Guid.NewGuid();
@@ -77,13 +79,19 @@ public sealed class ProfileOperationDefinition : CamOperationDefinition
     public double StartDepthMm { get; set; }
     public double CutDepthMm { get; set; } = 18;
     public double PassDepthMm { get; set; } = 3;
+    public double AllowanceMm { get; set; }
+    public double StartPointFraction { get; set; }
+    public double LeadInLengthMm { get; set; }
+    public double LeadOutLengthMm { get; set; }
+    public double RampLengthMm { get; set; }
+    public double? LastPassDepthMm { get; set; }
     public double SafeZMm { get; set; } = 5;
     public double FeedRateMmPerMin { get; set; } = 1800;
     public double PlungeRateMmPerMin { get; set; } = 600;
     public int SpindleRpm { get; set; } = 18000;
     public Guid? MaterialSheetId { get; set; }
     public ProfileTabSettings Tabs { get; set; } = new();
-    public ProfileOperationDefinition Duplicate() => new() { Name = $"{Name} Copy", GeometryIds = [.. GeometryIds], Tool = Tool with { }, IsEnabled = IsEnabled, Order = Order + 1, Side = Side, Direction = Direction, StartDepthMm = StartDepthMm, CutDepthMm = CutDepthMm, PassDepthMm = PassDepthMm, SafeZMm = SafeZMm, FeedRateMmPerMin = FeedRateMmPerMin, PlungeRateMmPerMin = PlungeRateMmPerMin, SpindleRpm = SpindleRpm,MaterialSheetId=MaterialSheetId,Tabs=Tabs.Copy() };
+    public ProfileOperationDefinition Duplicate() => new() { Name = $"{Name} Copy", GeometryIds = [.. GeometryIds], Tool = Tool with { }, IsEnabled = IsEnabled, Order = Order + 1, Side = Side, Direction = Direction, StartDepthMm = StartDepthMm, CutDepthMm = CutDepthMm, PassDepthMm = PassDepthMm, AllowanceMm=AllowanceMm, StartPointFraction=StartPointFraction, LeadInLengthMm=LeadInLengthMm, LeadOutLengthMm=LeadOutLengthMm, RampLengthMm=RampLengthMm, LastPassDepthMm=LastPassDepthMm, SafeZMm = SafeZMm, FeedRateMmPerMin = FeedRateMmPerMin, PlungeRateMmPerMin = PlungeRateMmPerMin, SpindleRpm = SpindleRpm,MaterialSheetId=MaterialSheetId,Tabs=Tabs.Copy() };
 }
 public enum EngraveDirection { Forward, Reverse, Optimize }
 public sealed class EngraveOperationDefinition:CamOperationDefinition
@@ -101,10 +109,56 @@ public sealed class VCarveOperationDefinition:CamOperationDefinition
     public VCarveOperationDefinition Duplicate()=>new(){Name=$"{Name} Copy",GeometryIds=[..GeometryIds],Tool=Tool with{},IsEnabled=IsEnabled,Order=Order+1,MaximumDepthMm=MaximumDepthMm,ClearFlatRegions=ClearFlatRegions,OffsetStepOverMm=OffsetStepOverMm,SafeZMm=SafeZMm,FeedRateMmPerMin=FeedRateMmPerMin,PlungeRateMmPerMin=PlungeRateMmPerMin,SpindleRpm=SpindleRpm,MaterialSheetId=MaterialSheetId};
 }
 
+public enum PocketEntryMode { Plunge, LinearRamp }
+public sealed class PocketOperationDefinition : CamOperationDefinition
+{
+    [JsonIgnore] public override string DetailSummary => $"Pocket · {GeometryIds.Count} vector{(GeometryIds.Count == 1 ? "" : "s")} · {CutDepthMm:0.###} mm";
+    public double StartDepthMm { get; set; }
+    public double CutDepthMm { get; set; } = 6;
+    public double PassDepthMm { get; set; } = 2;
+    public double StepOverMm { get; set; } = 2.4;
+    public double AllowanceMm { get; set; }
+    public CutDirection Direction { get; set; } = CutDirection.Climb;
+    public PocketEntryMode EntryMode { get; set; } = PocketEntryMode.LinearRamp;
+    public double RampLengthMm { get; set; } = 12;
+    public double SafeZMm { get; set; } = 5;
+    public double FeedRateMmPerMin { get; set; } = 1800;
+    public double PlungeRateMmPerMin { get; set; } = 600;
+    public int SpindleRpm { get; set; } = 18000;
+    public Guid? MaterialSheetId { get; set; }
+    public PocketOperationDefinition Duplicate() => new() { Name=$"{Name} Copy",GeometryIds=[..GeometryIds],Tool=Tool with{},IsEnabled=IsEnabled,Order=Order+1,StartDepthMm=StartDepthMm,CutDepthMm=CutDepthMm,PassDepthMm=PassDepthMm,StepOverMm=StepOverMm,AllowanceMm=AllowanceMm,Direction=Direction,EntryMode=EntryMode,RampLengthMm=RampLengthMm,SafeZMm=SafeZMm,FeedRateMmPerMin=FeedRateMmPerMin,PlungeRateMmPerMin=PlungeRateMmPerMin,SpindleRpm=SpindleRpm,MaterialSheetId=MaterialSheetId };
+}
+
+public enum DrillCycle { Simple, Peck }
+public enum DrillOrdering { Selection, Optimized }
+public sealed class DrillOperationDefinition : CamOperationDefinition
+{
+    [JsonIgnore] public override string DetailSummary => $"Drill · {GeometryIds.Count} point{(GeometryIds.Count == 1 ? "" : "s")} · {CutDepthMm:0.###} mm";
+    public DrillCycle Cycle { get; set; }
+    public DrillOrdering Ordering { get; set; } = DrillOrdering.Optimized;
+    public double CutDepthMm { get; set; } = 6;
+    public double PeckDepthMm { get; set; } = 2;
+    public double SafeZMm { get; set; } = 5;
+    public double RetractZMm { get; set; } = 1;
+    public double DwellSeconds { get; set; }
+    public double PlungeRateMmPerMin { get; set; } = 300;
+    public int SpindleRpm { get; set; } = 18000;
+    public Guid? MaterialSheetId { get; set; }
+    public DrillOperationDefinition Duplicate() => new() { Name=$"{Name} Copy",GeometryIds=[..GeometryIds],Tool=Tool with{},IsEnabled=IsEnabled,Order=Order+1,Cycle=Cycle,Ordering=Ordering,CutDepthMm=CutDepthMm,PeckDepthMm=PeckDepthMm,SafeZMm=SafeZMm,RetractZMm=RetractZMm,DwellSeconds=DwellSeconds,PlungeRateMmPerMin=PlungeRateMmPerMin,SpindleRpm=SpindleRpm,MaterialSheetId=MaterialSheetId };
+}
+
+public sealed record MaterialSnapshot
+{
+    public Guid SourceMaterialId { get; init; }
+    public string Name { get; init; } = "Unspecified";
+    public string Category { get; init; } = "General";
+}
+
 public sealed class CamJob
 {
     public List<CamOperationDefinition> Operations { get; set; } = [];
     public MachineSnapshot? Machine { get; set; }
+    public MaterialSnapshot? Material { get; set; }
     public List<FixtureDefinition> Fixtures { get; set; } = [];
     public bool SafetySetupIncomplete { get; set; }
     public void NormalizeOrder() { for (var i = 0; i < Operations.Count; i++) Operations[i].Order = i; }

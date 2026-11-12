@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using CncCad.Cam.Profile;
+using CncCad.Cam.Pocket;
+using CncCad.Cam.Drilling;
 using CncCad.Cam.Operations;
 using CncCad.Cam.Tools;
 using CncCad.Cam.Toolpaths;
@@ -9,6 +11,7 @@ using CncCad.Core.Documents;
 using CncCad.Core.Commands;
 using CncCad.Core.Entities;
 using CncCad.Core.Geometry;
+using CncCad.Core.Preview;
 using CncCad.Core.Selection;
 using CncCad.Core.Snapping;
 using CncCad.Infrastructure.Persistence;
@@ -16,10 +19,12 @@ using CncCad.Infrastructure.Settings;
 using CncCad.IO.Projects;
 using CncCad.IO.Import;
 using CncCad.PostProcessors.Models;
+using CncCad.PostProcessors.GCode;
 using CncCad.PostProcessors.Uccnc;
 using CncCad.Rendering.Canvas;
 using CncCad.Simulation.MachineTime;
 using CncCad.Simulation.Playback;
+using CncCad.Simulation.Stock;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace CncCad.App.ViewModels;
@@ -33,9 +38,16 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly IRecentProjectStore _recentProjectStore;
     private readonly IMachineProfileRepository? _machineProfiles;
     private readonly ISafetyPreflightService _safetyPreflight = new SafetyPreflightService();
-    private readonly ICamOperationCalculator _operationCalculator = new CompositeOperationCalculator(new ProfileOperationCalculator(),new EngraveOperationCalculator(),new VCarveOperationCalculator());
+    private readonly ICamOperationCalculator _operationCalculator = new CompositeOperationCalculator(new ProfileOperationCalculator(),new PocketOperationCalculator(),new DrillOperationCalculator(),new EngraveOperationCalculator(),new VCarveOperationCalculator());
     private readonly ICadOffsetService _offsetService = new CadOffsetService();
-    private readonly UccncPostProcessor _postProcessor = new();
+    private readonly IPostProcessorRegistry _postProcessors = new PostProcessorRegistry([new UccncPostProcessor()]);
+    private readonly IStockSimulationService _stockSimulationService = new CpuStockSimulationService();
+    private readonly IRecoveryStore? _recoveryStore;
+    private readonly IMaterialLibrary? _materialLibrary;
+    private readonly IToolCuttingPresetRepository? _presetRepository;
+    private readonly string _recoveryJobKey=Guid.NewGuid().ToString("N");
+    private DateTimeOffset _dirtySinceUtc=DateTimeOffset.UtcNow;
+    private DateTimeOffset _lastRecoveryUtc=DateTimeOffset.MinValue;
     private readonly JsonProjectSerializer _projectSerializer = new();
     private readonly IVectorImportService _vectorImporter = new CompositeVectorImportService([new SvgVectorImporter(),new DxfVectorImporter()]);
     private readonly IVectorRepairService _repairService = new VectorRepairService();
@@ -51,11 +63,16 @@ public partial class MainWindowViewModel : ViewModelBase
     public NestingJobDefinition NestingJob { get; private set; }=new();
     public ToolpathProgram Program { get; } = new() { Name = "Untitled job" };
     public ObservableCollection<CncTool> Tools { get; } = [];
+    public ObservableCollection<CncTool> FilteredTools { get; } = [];
+    public IReadOnlyList<string> ToolCategories { get; }=["All",..Enum.GetNames<ToolType>()];
     public ObservableCollection<MachineProfileDefinition> Machines { get; } = [];
     public ObservableCollection<FixtureDefinition> Fixtures { get; } = [];
     public ObservableCollection<SafetyFinding> SafetyFindings { get; } = [];
     public ObservableCollection<CamOperationDefinition> Operations { get; } = [];
     public ObservableCollection<RecentProject> RecentProjects { get; } = [];
+    public ObservableCollection<RecoverySnapshotInfo> RecoverableProjects { get; } = [];
+    public ObservableCollection<MaterialDefinition> Materials { get; } = [];
+    public ObservableCollection<ToolCuttingPreset> ToolPresets { get; } = [];
     public ObservableCollection<CadLayer> Layers { get; } = [];
     public ObservableCollection<RepairIssue> RepairIssues { get; }=[];
     public ObservableCollection<NestPartDefinition> NestParts { get; }=[];
@@ -68,9 +85,16 @@ public partial class MainWindowViewModel : ViewModelBase
     public SelectionModel Selection { get; } = new();
     public SnapSettings SnapSettings { get; } = new();
     public ToolpathPlaybackSession Playback { get; } = new();
+    public ShellWorkspaceViewModel Shell { get; }
+    public DesignWorkspaceViewModel DesignWorkspace { get; }
+    public ToolpathWorkspaceViewModel ToolpathWorkspace { get; private set; }
+    public PreviewWorkspaceViewModel PreviewWorkspace { get; }
+    public ExportWorkspaceViewModel ExportWorkspace { get; }
     public IReadOnlyList<double> PlaybackSpeeds => ToolpathPlaybackSession.SupportedSpeeds;
     public IReadOnlyList<GCodeExportFormat> ExportFormats => GCodeExportFormat.All;
     [ObservableProperty] private CncTool? selectedTool;
+    [ObservableProperty] private string toolSearch="";
+    [ObservableProperty] private string selectedToolCategory="All";
     [ObservableProperty] private CadLayer? selectedLayer;
     [ObservableProperty] private MachineProfileDefinition? selectedMachine;
     [ObservableProperty] private FixtureDefinition? selectedFixture;
@@ -88,6 +112,14 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty] private double passDepthMm = 3;
     [ObservableProperty] private bool hasJob;
     [ObservableProperty] private bool isDirty;
+    [ObservableProperty] private WorkspaceMode workspaceMode = WorkspaceMode.Startup;
+    [ObservableProperty] private ViewportLayout viewportLayout = ViewportLayout.Design2D;
+    [ObservableProperty] private ResponsiveLayoutState responsiveLayout = ResponsiveLayoutState.Regular;
+    [ObservableProperty] private DesignTaskPage designTaskPage = DesignTaskPage.Palette;
+    [ObservableProperty] private ToolpathTaskPage toolpathTaskPage = ToolpathTaskPage.Palette;
+    [ObservableProperty] private StockHeightfield? stockSimulation;
+    [ObservableProperty] private ProjectPreviewSettings previewSettings = ProjectPreviewSettings.LegacyDefault;
+    [ObservableProperty] private MaterialDefinition? selectedMaterial;
     [ObservableProperty] private string jobTitle = "No job open";
     [ObservableProperty] private string selectionStatus = "Nothing selected";
     [ObservableProperty] private bool canUndo;
@@ -100,6 +132,10 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty] private bool canDistribute;
     [ObservableProperty] private ToolPaletteItem? activePaletteItem;
     [ObservableProperty] private CamOperationDefinition? selectedOperation;
+    [ObservableProperty] private CamOperationDefinition? operationEditorDraft;
+    [ObservableProperty] private CamOperationDefinition? operationEditorTarget;
+    [ObservableProperty] private bool isOperationEditorOpen;
+    [ObservableProperty] private bool isNewOperationEditor;
     [ObservableProperty] private string workflowStage = "1  Job Setup";
     [ObservableProperty] private string designGuidance = "Create a job to begin drawing.";
     [ObservableProperty] private string profileGuidance = "Create a job, then select closed vectors.";
@@ -109,7 +145,6 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty] private bool hasClipboard;
     [ObservableProperty] private WorkspaceFocus workspaceFocus = WorkspaceFocus.Design;
     [ObservableProperty] private WorkspaceView activeWorkspaceView;
-    [ObservableProperty] private bool showEmptyDesign;
     [ObservableProperty] private bool isSelectActive = true;
     [ObservableProperty] private double playbackProgress;
     [ObservableProperty] private double playbackSpeed = 5;
@@ -181,6 +216,13 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty] private bool textPathFit;
     [ObservableProperty] private bool textKeepUpright=true;
     public IReadOnlyList<TextAlignment> TextAlignments=>Enum.GetValues<TextAlignment>();
+    public IReadOnlyList<ProfileSide> ProfileSides { get; } = Enum.GetValues<ProfileSide>();
+    public IReadOnlyList<CutDirection> CutDirections { get; } = Enum.GetValues<CutDirection>();
+    public IReadOnlyList<PocketEntryMode> PocketEntryModes { get; } = Enum.GetValues<PocketEntryMode>();
+    public IReadOnlyList<DrillCycle> DrillCycles { get; } = Enum.GetValues<DrillCycle>();
+    public IReadOnlyList<DrillOrdering> DrillOrderings { get; } = Enum.GetValues<DrillOrdering>();
+    public IReadOnlyList<EngraveDirection> EngraveDirections { get; } = Enum.GetValues<EngraveDirection>();
+    public IReadOnlyList<TabPlacementMode> TabPlacementModes { get; } = Enum.GetValues<TabPlacementMode>();
     [ObservableProperty] private string vectorColor="#61C8FF";
     [ObservableProperty] private bool useDrawingColor;
     [ObservableProperty] private int cornerIndex=1;
@@ -197,24 +239,68 @@ public partial class MainWindowViewModel : ViewModelBase
     public string MaterialSummary => HasJob ? $"{Document.Job.WidthMm:0.###} × {Document.Job.HeightMm:0.###} × {Document.Job.ThicknessMm:0.###} mm" : "No material defined";
     public string OriginSummary=>HasJob?$"XY zero: {Document.Job.Origin}{(Math.Abs(Document.Job.OriginOffsetXmm)>1e-9||Math.Abs(Document.Job.OriginOffsetYmm)>1e-9?$" + ({Document.Job.OriginOffsetXmm:0.###}, {Document.Job.OriginOffsetYmm:0.###}) mm":"")} · Z zero: {Document.Job.ZZero}":"No datum defined";
     public string? ProjectPath { get; private set; }
+    public bool IsRegularLayout=>ResponsiveLayout==ResponsiveLayoutState.Regular;
+    public bool IsCompactLayout=>ResponsiveLayout==ResponsiveLayoutState.Compact;
+    public bool ShowRegularPreviewAppearance=>IsToolpathPreview&&IsRegularLayout;
+    public bool IsDesignMode=>WorkspaceMode==CncCad.Infrastructure.Settings.WorkspaceMode.Design;
+    public bool IsToolpathsMode=>WorkspaceMode==CncCad.Infrastructure.Settings.WorkspaceMode.Toolpaths;
+    public bool IsDesignPalette=>DesignTaskPage==DesignTaskPage.Palette;
+    public bool IsDesignConstructionTask=>DesignTaskPage==DesignTaskPage.Construction;
+    public bool IsDesignPositionTask=>DesignTaskPage==DesignTaskPage.Position;
+    public bool IsDesignTransformTask=>DesignTaskPage==DesignTaskPage.Transform;
+    public bool IsDesignEditTask=>DesignTaskPage==DesignTaskPage.Edit;
+    public bool IsDesignOffsetTask=>DesignTaskPage==DesignTaskPage.OffsetLayout;
+    public bool IsDesignTextTask=>DesignTaskPage==DesignTaskPage.TextShapes;
+    public bool IsDesignAppearanceTask=>DesignTaskPage==DesignTaskPage.Appearance;
+    public bool IsDesignRepairTask=>DesignTaskPage==DesignTaskPage.Repair;
+    public bool IsDesignSnappingTask=>DesignTaskPage==DesignTaskPage.Snapping;
+    public bool IsDesignLayersTask=>DesignTaskPage==DesignTaskPage.Layers;
+    public bool IsDesignNestingTask=>DesignTaskPage==DesignTaskPage.Nesting;
+    public bool IsDesignJobTask=>DesignTaskPage==DesignTaskPage.Job;
+    public bool IsToolpathPalette=>ToolpathTaskPage==ToolpathTaskPage.Palette;
+    public bool IsToolLibraryTask=>ToolpathTaskPage==ToolpathTaskPage.ToolLibrary;
+    public bool IsMachineFixturesTask=>ToolpathTaskPage==ToolpathTaskPage.MachineFixtures;
+    public string DesignTaskTitle=>DesignTaskPage switch{DesignTaskPage.Palette=>"DESIGN",DesignTaskPage.Construction=>"NUMERIC CONSTRUCTION",DesignTaskPage.Position=>"POSITION",DesignTaskPage.Transform=>"TRANSFORM & ALIGN",DesignTaskPage.Edit=>"EDIT VECTORS",DesignTaskPage.OffsetLayout=>"OFFSET & LAYOUT",DesignTaskPage.TextShapes=>"SHAPES & TEXT",DesignTaskPage.Appearance=>"VECTOR APPEARANCE",DesignTaskPage.Repair=>"REPAIR & NODE EDIT",DesignTaskPage.Snapping=>"SNAPPING",DesignTaskPage.Layers=>"LAYERS",DesignTaskPage.Nesting=>"MATERIAL NESTING",_=>"JOB SETUP"};
+    public string ToolpathTaskTitle=>ToolpathTaskPage switch{ToolpathTaskPage.Palette=>"TOOLPATHS",ToolpathTaskPage.OperationEditor=>OperationEditorDraft?.Name?.ToUpperInvariant()??"TOOLPATH EDITOR",ToolpathTaskPage.ToolLibrary=>"TOOL & MATERIAL LIBRARY",_=>"MACHINE & FIXTURES"};
+    public bool IsMaterialPreview=>PreviewSettings.Style==PreviewRenderStyle.Material;
+    public string PreviewAppearanceSummary=>PreviewSettings.Style==PreviewRenderStyle.Technical?"Technical shaded preview":$"{PreviewSettings.ResolveMaterial(CamJob.Material?.Name,CamJob.Material?.Category)} · {(PreviewSettings.GrainDirection==GrainDirection.AlongStockY?"grain along Y":"grain along X")}";
 
-    public MainWindowViewModel(IToolLibrary toolLibrary, IRecentProjectStore recentProjectStore, IMachineProfileRepository? machineProfiles = null,ITextOutlineService? textOutlineService=null,IFontCatalog? fontCatalog=null) { _toolLibrary = toolLibrary; _recentProjectStore = recentProjectStore; _machineProfiles = machineProfiles;if(textOutlineService is not null)_textOutlineService=textOutlineService;_fontCatalog=fontCatalog; SetActiveToolGuidance(CanvasTool.Select); }
+    public void TogglePreviewStyle()=>UpdatePreviewSettings(PreviewSettings with{Style=PreviewSettings.Style==PreviewRenderStyle.Technical?PreviewRenderStyle.Material:PreviewRenderStyle.Technical});
+    public void SetPreviewMaterial(MaterialAppearancePreset preset)=>UpdatePreviewSettings(PreviewSettings with{Style=PreviewRenderStyle.Material,MaterialPreset=preset});
+    public void SetPreviewGrain(GrainDirection direction)=>UpdatePreviewSettings(PreviewSettings with{GrainDirection=direction});
+    public void SetPreviewTint(string? tint)=>UpdatePreviewSettings(PreviewSettings with{TintHex=tint});
+    public void ResetPreviewAppearance()=>UpdatePreviewSettings(ProjectPreviewSettings.NewWoodJobDefault);
+    private void UpdatePreviewSettings(ProjectPreviewSettings settings)
+    {
+        settings=settings.Normalize();if(PreviewSettings==settings)return;PreviewSettings=settings;IsDirty=true;Message=$"Preview appearance: {PreviewAppearanceSummary}";
+    }
+    partial void OnPreviewSettingsChanged(ProjectPreviewSettings value){OnPropertyChanged(nameof(IsMaterialPreview));OnPropertyChanged(nameof(PreviewAppearanceSummary));}
+
+    public MainWindowViewModel(IToolLibrary toolLibrary, IRecentProjectStore recentProjectStore, IMachineProfileRepository? machineProfiles = null,ITextOutlineService? textOutlineService=null,IFontCatalog? fontCatalog=null,IRecoveryStore? recoveryStore=null,IMaterialLibrary? materialLibrary=null,IToolCuttingPresetRepository? presetRepository=null) { _toolLibrary = toolLibrary; _recentProjectStore = recentProjectStore; _machineProfiles = machineProfiles;_recoveryStore=recoveryStore;_materialLibrary=materialLibrary;_presetRepository=presetRepository;if(textOutlineService is not null)_textOutlineService=textOutlineService;_fontCatalog=fontCatalog;Shell=new(SetWorkspaceMode,SetViewportLayout);DesignWorkspace=new(Document,Selection,Layers);ToolpathWorkspace=new(CamJob,Operations,Tools);PreviewWorkspace=new(Playback,()=>StockSimulation);ExportWorkspace=new(_postProcessors); SetActiveToolGuidance(CanvasTool.Select); }
     public async Task LoadAsync()
     {
         Tools.Clear(); foreach (var tool in await _toolLibrary.GetAllAsync()) Tools.Add(tool);
+        RefreshToolFilter();
         if (_machineProfiles is not null) { Machines.Clear(); foreach (var machine in await _machineProfiles.GetAllAsync()) Machines.Add(machine); SelectedMachine = Machines.FirstOrDefault(); }
+        if(_materialLibrary is not null){Materials.Clear();foreach(var material in await _materialLibrary.GetAllAsync())Materials.Add(material);SelectedMaterial=Materials.FirstOrDefault();}
+        if(_presetRepository is not null){ToolPresets.Clear();foreach(var preset in await _presetRepository.GetAllAsync())ToolPresets.Add(preset);}
         SelectedTool = Tools.FirstOrDefault(t => t.Name.StartsWith("6mm End Mill")) ?? Tools.FirstOrDefault();
         Fonts.Clear();if(_fontCatalog is not null)foreach(var font in _fontCatalog.Fonts)Fonts.Add(font);SelectedFont=Fonts.FirstOrDefault(x=>x.Descriptor.Family.Equals("Inter",StringComparison.OrdinalIgnoreCase))??Fonts.FirstOrDefault();if(SelectedFont is not null)TextFont=SelectedFont.Descriptor.Family;
         await RefreshRecentProjectsAsync();
+        await RefreshRecoveriesAsync();
         RefreshLayers();
     }
     partial void OnFontSearchChanged(string value)=>RefreshFonts();partial void OnFontKindFilterChanged(string value)=>RefreshFonts();private void RefreshFonts(){if(_fontCatalog is null)return;var selected=SelectedFont?.Descriptor.Family;Fonts.Clear();foreach(var font in _fontCatalog.Fonts.Where(x=>(string.IsNullOrWhiteSpace(FontSearch)||x.Descriptor.Family.Contains(FontSearch,StringComparison.OrdinalIgnoreCase))&&(FontKindFilter=="All"||x.Descriptor.Kind.ToString()==FontKindFilter)))Fonts.Add(font);SelectedFont=Fonts.FirstOrDefault(x=>x.Descriptor.Family==selected)??Fonts.FirstOrDefault();}
+    partial void OnToolSearchChanged(string value)=>RefreshToolFilter();partial void OnSelectedToolCategoryChanged(string value)=>RefreshToolFilter();private void RefreshToolFilter(){var selected=SelectedTool;FilteredTools.Clear();foreach(var tool in Tools.Where(x=>(string.IsNullOrWhiteSpace(ToolSearch)||x.Name.Contains(ToolSearch,StringComparison.OrdinalIgnoreCase))&&(SelectedToolCategory=="All"||x.Type.ToString()==SelectedToolCategory)))FilteredTools.Add(tool);SelectedTool=selected is not null&&FilteredTools.Contains(selected)?selected:FilteredTools.FirstOrDefault();}
+    partial void OnSelectedMaterialChanged(MaterialDefinition? value){if(value is not null&&HasJob){CamJob.Material=new(){SourceMaterialId=value.Id,Name=value.Name,Category=value.Category};IsDirty=true;OnPropertyChanged(nameof(PreviewAppearanceSummary));}}
     public void CreateJob(JobSettings settings)
     {
         ClearPlayback();
+        PreviewSettings=ProjectPreviewSettings.NewWoodJobDefault;
         Document.Job = settings;
-        Document.Entities.Clear(); Document.Layers = [new()];Document.ActiveLayerId=Document.Layers[0].Id; CamJob = new() { Machine = SelectedMachine?.Snapshot(), SafetySetupIncomplete = SelectedMachine is null };NestingJob=new(){SheetTemplate=new(){WidthMm=settings.WidthMm,HeightMm=settings.HeightMm,ThicknessMm=settings.ThicknessMm}};NestParts.Clear();MaterialSheets.Clear(); Program.Operations.Clear(); Operations.Clear(); Fixtures.Clear(); Selection.Clear(); _history.Clear(); UpdateHistoryState();RefreshLayers();
-        Program.Name = settings.Name; ProjectPath = null; HasJob = true; IsDirty = true; JobTitle = settings.Name;
+        Document.Entities.Clear(); Document.Layers = [new()];Document.ActiveLayerId=Document.Layers[0].Id; CamJob = new() { Machine = SelectedMachine?.Snapshot(), SafetySetupIncomplete = SelectedMachine is null };ToolpathWorkspace=new(CamJob,Operations,Tools);OnPropertyChanged(nameof(ToolpathWorkspace));NestingJob=new(){SheetTemplate=new(){WidthMm=settings.WidthMm,HeightMm=settings.HeightMm,ThicknessMm=settings.ThicknessMm}};NestParts.Clear();MaterialSheets.Clear(); Program.Operations.Clear(); Operations.Clear(); Fixtures.Clear(); Selection.Clear(); _history.Clear(); UpdateHistoryState();RefreshLayers();
+        Program.Name = settings.Name; ProjectPath = null; HasJob = true; IsDirty = true; JobTitle = settings.Name;WorkspaceMode=WorkspaceMode.Design;
+        if(SelectedMaterial is not null)CamJob.Material=new(){SourceMaterialId=SelectedMaterial.Id,Name=SelectedMaterial.Name,Category=SelectedMaterial.Category};
         GCodePreview = "Create a profile toolpath to preview G-code.";
         Message = $"Created {settings.WidthMm:0.##} × {settings.HeightMm:0.##} × {settings.ThicknessMm:0.##} mm job";
         RefreshWorkspaceState(); OnPropertyChanged(nameof(MaterialSummary));OnPropertyChanged(nameof(OriginSummary));
@@ -415,16 +501,33 @@ public partial class MainWindowViewModel : ViewModelBase
     }
     public EngraveOperationDefinition CreateEngraveDraft(){if(Selection.Count==0)throw new InvalidOperationException("Select one or more vectors or centerline text first.");var selected=Document.Entities.Where(x=>Selection.Contains(x.Id)).ToArray();if(selected.Any(x=>x is not LineEntity and not PolylineEntity and not ArcEntity and not CircleEntity and not EllipseEntity and not VectorPathEntity and not TextEntity))throw new InvalidOperationException("The selection contains geometry that cannot be engraved.");var tool=SelectedTool??throw new InvalidOperationException("Select an engraving tool.");var sheets=selected.Select(x=>x.MaterialSheetId).Distinct().ToArray();if(sheets.Length>1)throw new InvalidOperationException("Create engraving for one material sheet at a time.");return new(){Name=$"Engrave {CamJob.Operations.Count+1}",GeometryIds=selected.Select(x=>x.Id).ToList(),Tool=ToolSnapshot.FromTool(tool),Order=CamJob.Operations.Count,CutDepthMm=Math.Min(1,Document.Job.ThicknessMm),PassDepthMm=Math.Min(1,Math.Max(.1,tool.StepDownMm)),SafeZMm=Document.Job.SafeZMm,FeedRateMmPerMin=tool.FeedRateMmPerMin,PlungeRateMmPerMin=tool.PlungeRateMmPerMin,SpindleRpm=tool.SpindleRpm,MaterialSheetId=sheets[0]};}
     public VCarveOperationDefinition CreateVCarveDraft(){if(Selection.Count==0)throw new InvalidOperationException("Select one or more closed outline vectors.");var selected=SelectedEntities();var tool=SelectedTool??throw new InvalidOperationException("Select a V-bit.");if(tool.Type is not ToolType.VBit and not ToolType.EngravingBit||tool.VBitAngleDegrees is not (>0 and <180))throw new InvalidOperationException("Choose a V-bit with a valid included angle.");var sheets=selected.Select(x=>x.MaterialSheetId).Distinct().ToArray();if(sheets.Length>1)throw new InvalidOperationException("Create V-carving for one material sheet at a time.");return new(){Name=$"V-Carve {CamJob.Operations.Count+1}",GeometryIds=selected.Select(x=>x.Id).ToList(),Tool=ToolSnapshot.FromTool(tool),Order=CamJob.Operations.Count,MaximumDepthMm=Math.Min(3,Document.Job.ThicknessMm),OffsetStepOverMm=Math.Max(.1,(tool.TipDiameterMm??.2)*.5),SafeZMm=Document.Job.SafeZMm,FeedRateMmPerMin=tool.FeedRateMmPerMin,PlungeRateMmPerMin=tool.PlungeRateMmPerMin,SpindleRpm=tool.SpindleRpm,MaterialSheetId=sheets[0]};}
+    public PocketOperationDefinition CreatePocketDraft(){if(Selection.Count==0)throw new InvalidOperationException("Select one or more closed pocket boundaries.");var selected=SelectedEntities();if(selected.Any(x=>!IsProfileContour(x)))throw new InvalidOperationException("Pocket boundaries must be closed vectors.");var tool=SelectedTool??throw new InvalidOperationException("Select a pocket tool.");var sheets=selected.Select(x=>x.MaterialSheetId).Distinct().ToArray();if(sheets.Length>1)throw new InvalidOperationException("Create a pocket from one material sheet at a time.");return new(){Name=$"Pocket {CamJob.Operations.Count+1}",GeometryIds=selected.Select(x=>x.Id).ToList(),Tool=ToolSnapshot.FromTool(tool),Order=CamJob.Operations.Count,CutDepthMm=Math.Min(6,Document.Job.ThicknessMm),PassDepthMm=Math.Min(tool.StepDownMm,Document.Job.ThicknessMm),StepOverMm=Math.Max(.1,tool.DiameterMm*tool.StepOverPercent/100),SafeZMm=Document.Job.SafeZMm,FeedRateMmPerMin=tool.FeedRateMmPerMin,PlungeRateMmPerMin=tool.PlungeRateMmPerMin,SpindleRpm=tool.SpindleRpm,MaterialSheetId=sheets[0]};}
+    public DrillOperationDefinition CreateDrillDraft(){if(Selection.Count==0)throw new InvalidOperationException("Select circle centers or explicit drill points.");var selected=SelectedEntities();if(selected.Any(x=>x is not CircleEntity and not DrillPointEntity))throw new InvalidOperationException("Drilling supports circles and explicit drill points.");var tool=SelectedTool??throw new InvalidOperationException("Select a drill tool.");var sheets=selected.Select(x=>x.MaterialSheetId).Distinct().ToArray();if(sheets.Length>1)throw new InvalidOperationException("Create drilling from one material sheet at a time.");return new(){Name=$"Drill {CamJob.Operations.Count+1}",GeometryIds=selected.Select(x=>x.Id).ToList(),Tool=ToolSnapshot.FromTool(tool),Order=CamJob.Operations.Count,CutDepthMm=Math.Min(Document.Job.ThicknessMm,tool.CuttingLengthMm??Document.Job.ThicknessMm),PeckDepthMm=Math.Max(.1,tool.StepDownMm),SafeZMm=Document.Job.SafeZMm,RetractZMm=Math.Min(1,Document.Job.SafeZMm/2),PlungeRateMmPerMin=tool.PlungeRateMmPerMin,SpindleRpm=tool.SpindleRpm,MaterialSheetId=sheets[0]};}
     public void AddOperation(ProfileOperationDefinition operation) { ClearPlayback(); InvalidatePreflight(); CamJob.Operations.Add(operation); CamJob.NormalizeOrder(); CalculateOperation(operation); RefreshOperations(); SelectedOperation = operation; IsDirty = true; RefreshWorkspaceState(); }
     public void AddOperation(EngraveOperationDefinition operation) { ClearPlayback();InvalidatePreflight();CamJob.Operations.Add(operation);CamJob.NormalizeOrder();CalculateOperation(operation);RefreshOperations();SelectedOperation=operation;IsDirty=true;RefreshWorkspaceState(); }
     public void AddOperation(VCarveOperationDefinition operation) { ClearPlayback();InvalidatePreflight();CamJob.Operations.Add(operation);CamJob.NormalizeOrder();CalculateOperation(operation);RefreshOperations();SelectedOperation=operation;IsDirty=true;RefreshWorkspaceState(); }
+    public void AddOperation(PocketOperationDefinition operation) { ClearPlayback();InvalidatePreflight();CamJob.Operations.Add(operation);CamJob.NormalizeOrder();CalculateOperation(operation);RefreshOperations();SelectedOperation=operation;IsDirty=true;RefreshWorkspaceState(); }
+    public void AddOperation(DrillOperationDefinition operation) { ClearPlayback();InvalidatePreflight();CamJob.Operations.Add(operation);CamJob.NormalizeOrder();CalculateOperation(operation);RefreshOperations();SelectedOperation=operation;IsDirty=true;RefreshWorkspaceState(); }
+    public void BeginOperationEditor(CamOperationDefinition draft,bool isNew)
+    {
+        OperationEditorTarget=isNew?null:draft;OperationEditorDraft=isNew?draft:CopyOperation(draft);IsNewOperationEditor=isNew;IsOperationEditorOpen=true;ToolpathTaskPage=ToolpathTaskPage.OperationEditor;SetWorkspaceMode(CncCad.Infrastructure.Settings.WorkspaceMode.Toolpaths);OnPropertyChanged(nameof(ToolpathTaskTitle));
+    }
+    public void SelectVectorsForEditor(){if(OperationEditorDraft is null)throw new InvalidOperationException("Open a toolpath editor first.");if(Selection.Count==0)throw new InvalidOperationException("Select vectors in the 2D view first.");OperationEditorDraft.GeometryIds=[..Selection.Ids];OnPropertyChanged(nameof(OperationEditorDraft));Message=$"Selected {Selection.Count} vector(s) for {OperationEditorDraft.Name}";}
+    public void ApplySelectedToolToEditor(){if(OperationEditorDraft is null||SelectedTool is null)throw new InvalidOperationException("Select a library tool first.");OperationEditorDraft.Tool=ToolSnapshot.FromTool(SelectedTool);OnPropertyChanged(nameof(OperationEditorDraft));}
+    public void ApplyOperationEditor()
+    {
+        if(OperationEditorDraft is null)return;var draft=OperationEditorDraft;var validation=_operationCalculator.Calculate(draft,Document.Entities.ToDictionary(x=>x.Id));if(!validation.Success)throw new InvalidOperationException(string.Join(" ",validation.Errors.Select(x=>x.Message)));var target=OperationEditorTarget;if(target is null){switch(draft){case ProfileOperationDefinition value:AddOperation(value);break;case PocketOperationDefinition value:AddOperation(value);break;case DrillOperationDefinition value:AddOperation(value);break;case EngraveOperationDefinition value:AddOperation(value);break;case VCarveOperationDefinition value:AddOperation(value);break;}}else switch(target,draft){case(ProfileOperationDefinition t,ProfileOperationDefinition v):UpdateOperation(t,v);break;case(PocketOperationDefinition t,PocketOperationDefinition v):UpdateOperation(t,v);break;case(DrillOperationDefinition t,DrillOperationDefinition v):UpdateOperation(t,v);break;case(EngraveOperationDefinition t,EngraveOperationDefinition v):UpdateOperation(t,v);break;case(VCarveOperationDefinition t,VCarveOperationDefinition v):UpdateOperation(t,v);break;default:throw new InvalidOperationException("The operation editor type changed unexpectedly.");}IsOperationEditorOpen=false;OperationEditorDraft=null;OperationEditorTarget=null;ToolpathTaskPage=ToolpathTaskPage.Palette;
+    }
+    public void CancelOperationEditor(){IsOperationEditorOpen=false;OperationEditorDraft=null;OperationEditorTarget=null;ToolpathTaskPage=ToolpathTaskPage.Palette;}
     public void UpdateOperation(ProfileOperationDefinition target, ProfileOperationDefinition values)
     {
-        target.Name = values.Name; target.GeometryIds = [.. values.GeometryIds]; target.Tool = values.Tool; target.IsEnabled = values.IsEnabled; target.Side = values.Side; target.Direction = values.Direction; target.StartDepthMm = values.StartDepthMm; target.CutDepthMm = values.CutDepthMm; target.PassDepthMm = values.PassDepthMm; target.SafeZMm = values.SafeZMm; target.FeedRateMmPerMin = values.FeedRateMmPerMin; target.PlungeRateMmPerMin = values.PlungeRateMmPerMin; target.SpindleRpm = values.SpindleRpm;target.MaterialSheetId=values.MaterialSheetId;target.Tabs=values.Tabs.Copy();
+        target.Name = values.Name; target.GeometryIds = [.. values.GeometryIds]; target.Tool = values.Tool; target.IsEnabled = values.IsEnabled; target.Side = values.Side; target.Direction = values.Direction; target.StartDepthMm = values.StartDepthMm; target.CutDepthMm = values.CutDepthMm; target.PassDepthMm = values.PassDepthMm; target.AllowanceMm=values.AllowanceMm;target.StartPointFraction=values.StartPointFraction;target.LeadInLengthMm=values.LeadInLengthMm;target.LeadOutLengthMm=values.LeadOutLengthMm;target.RampLengthMm=values.RampLengthMm;target.LastPassDepthMm=values.LastPassDepthMm; target.SafeZMm = values.SafeZMm; target.FeedRateMmPerMin = values.FeedRateMmPerMin; target.PlungeRateMmPerMin = values.PlungeRateMmPerMin; target.SpindleRpm = values.SpindleRpm;target.MaterialSheetId=values.MaterialSheetId;target.Tabs=values.Tabs.Copy();
         ClearPlayback(); InvalidatePreflight(); CalculateOperation(target); RefreshOperations(); IsDirty = true; RefreshWorkspaceState();
     }
     public void UpdateOperation(EngraveOperationDefinition target,EngraveOperationDefinition values){target.Name=values.Name;target.GeometryIds=[..values.GeometryIds];target.Tool=values.Tool;target.IsEnabled=values.IsEnabled;target.Direction=values.Direction;target.StartDepthMm=values.StartDepthMm;target.CutDepthMm=values.CutDepthMm;target.PassDepthMm=values.PassDepthMm;target.SafeZMm=values.SafeZMm;target.FeedRateMmPerMin=values.FeedRateMmPerMin;target.PlungeRateMmPerMin=values.PlungeRateMmPerMin;target.SpindleRpm=values.SpindleRpm;target.MaterialSheetId=values.MaterialSheetId;ClearPlayback();InvalidatePreflight();CalculateOperation(target);RefreshOperations();IsDirty=true;RefreshWorkspaceState();}
     public void UpdateOperation(VCarveOperationDefinition target,VCarveOperationDefinition values){target.Name=values.Name;target.GeometryIds=[..values.GeometryIds];target.Tool=values.Tool;target.IsEnabled=values.IsEnabled;target.MaximumDepthMm=values.MaximumDepthMm;target.ClearFlatRegions=values.ClearFlatRegions;target.OffsetStepOverMm=values.OffsetStepOverMm;target.SafeZMm=values.SafeZMm;target.FeedRateMmPerMin=values.FeedRateMmPerMin;target.PlungeRateMmPerMin=values.PlungeRateMmPerMin;target.SpindleRpm=values.SpindleRpm;target.MaterialSheetId=values.MaterialSheetId;ClearPlayback();InvalidatePreflight();CalculateOperation(target);RefreshOperations();IsDirty=true;RefreshWorkspaceState();}
+    public void UpdateOperation(PocketOperationDefinition target,PocketOperationDefinition values){target.Name=values.Name;target.GeometryIds=[..values.GeometryIds];target.Tool=values.Tool;target.IsEnabled=values.IsEnabled;target.StartDepthMm=values.StartDepthMm;target.CutDepthMm=values.CutDepthMm;target.PassDepthMm=values.PassDepthMm;target.StepOverMm=values.StepOverMm;target.AllowanceMm=values.AllowanceMm;target.Direction=values.Direction;target.EntryMode=values.EntryMode;target.RampLengthMm=values.RampLengthMm;target.SafeZMm=values.SafeZMm;target.FeedRateMmPerMin=values.FeedRateMmPerMin;target.PlungeRateMmPerMin=values.PlungeRateMmPerMin;target.SpindleRpm=values.SpindleRpm;target.MaterialSheetId=values.MaterialSheetId;ClearPlayback();InvalidatePreflight();CalculateOperation(target);RefreshOperations();IsDirty=true;RefreshWorkspaceState();}
+    public void UpdateOperation(DrillOperationDefinition target,DrillOperationDefinition values){target.Name=values.Name;target.GeometryIds=[..values.GeometryIds];target.Tool=values.Tool;target.IsEnabled=values.IsEnabled;target.Cycle=values.Cycle;target.Ordering=values.Ordering;target.CutDepthMm=values.CutDepthMm;target.PeckDepthMm=values.PeckDepthMm;target.SafeZMm=values.SafeZMm;target.RetractZMm=values.RetractZMm;target.DwellSeconds=values.DwellSeconds;target.PlungeRateMmPerMin=values.PlungeRateMmPerMin;target.SpindleRpm=values.SpindleRpm;target.MaterialSheetId=values.MaterialSheetId;ClearPlayback();InvalidatePreflight();CalculateOperation(target);RefreshOperations();IsDirty=true;RefreshWorkspaceState();}
     public void AddManualTabAt(Point2D point)
     {
         if(SelectedOperation is not ProfileOperationDefinition operation)throw new InvalidOperationException("Select a profile operation first.");var entity=operation.GeometryIds.Select(id=>Document.Entities.FirstOrDefault(x=>x.Id==id)).Where(x=>x is not null).MinBy(x=>DistanceToContour(point,EntityGeometry.WorldPoints(x!)))??throw new InvalidOperationException("The operation geometry is missing.");var path=EntityGeometry.WorldPoints(entity);var total=Enumerable.Range(0,path.Count).Sum(i=>path[i].DistanceTo(path[(i+1)%path.Count]));var current=0d;var bestDistance=double.MaxValue;var bestAlong=0d;for(var i=0;i<path.Count;i++){var a=path[i];var b=path[(i+1)%path.Count];var segment=b-a;var length=segment.Length;var q=point-a;var t=length<1e-12?0:Math.Clamp((q.X*segment.X+q.Y*segment.Y)/(length*length),0,1);var projected=new Point2D(a.X+segment.X*t,a.Y+segment.Y*t);var distance=point.DistanceTo(projected);if(distance<bestDistance){bestDistance=distance;bestAlong=current+length*t;}current+=length;}operation.Tabs.Enabled=true;operation.Tabs.PlacementMode=TabPlacementMode.Manual;operation.Tabs.ManualPlacements.Add(new(Guid.NewGuid(),bestAlong/total,entity.Id));ClearPlayback();InvalidatePreflight();CalculateOperation(operation);RefreshOperations();IsDirty=true;Message=$"Added manual tab to {operation.Name}";
@@ -435,6 +538,8 @@ public partial class MainWindowViewModel : ViewModelBase
     public void DuplicateOperation(ProfileOperationDefinition operation) { ClearPlayback(); InvalidatePreflight(); var copy = operation.Duplicate(); CamJob.Operations.Insert(Math.Min(operation.Order + 1, CamJob.Operations.Count), copy); CamJob.NormalizeOrder(); CalculateOperation(copy); RefreshOperations(); SelectedOperation = copy; IsDirty = true; RefreshWorkspaceState(); }
     public void DuplicateOperation(EngraveOperationDefinition operation) { ClearPlayback();InvalidatePreflight();var copy=operation.Duplicate();CamJob.Operations.Insert(Math.Min(operation.Order+1,CamJob.Operations.Count),copy);CamJob.NormalizeOrder();CalculateOperation(copy);RefreshOperations();SelectedOperation=copy;IsDirty=true;RefreshWorkspaceState(); }
     public void DuplicateOperation(VCarveOperationDefinition operation) { ClearPlayback();InvalidatePreflight();var copy=operation.Duplicate();CamJob.Operations.Insert(Math.Min(operation.Order+1,CamJob.Operations.Count),copy);CamJob.NormalizeOrder();CalculateOperation(copy);RefreshOperations();SelectedOperation=copy;IsDirty=true;RefreshWorkspaceState(); }
+    public void DuplicateOperation(PocketOperationDefinition operation) { ClearPlayback();InvalidatePreflight();var copy=operation.Duplicate();CamJob.Operations.Insert(Math.Min(operation.Order+1,CamJob.Operations.Count),copy);CamJob.NormalizeOrder();CalculateOperation(copy);RefreshOperations();SelectedOperation=copy;IsDirty=true;RefreshWorkspaceState(); }
+    public void DuplicateOperation(DrillOperationDefinition operation) { ClearPlayback();InvalidatePreflight();var copy=operation.Duplicate();CamJob.Operations.Insert(Math.Min(operation.Order+1,CamJob.Operations.Count),copy);CamJob.NormalizeOrder();CalculateOperation(copy);RefreshOperations();SelectedOperation=copy;IsDirty=true;RefreshWorkspaceState(); }
     public void ToggleOperation(CamOperationDefinition operation) { ClearPlayback(); InvalidatePreflight(); operation.IsEnabled = !operation.IsEnabled; operation.Status = operation.IsEnabled ? OperationStatus.Stale : OperationStatus.Disabled; if (operation.IsEnabled) CalculateOperation(operation); RefreshOperations(); RebuildProgram(); IsDirty = true; }
     public void MoveOperation(CamOperationDefinition operation, int delta) { var old = CamJob.Operations.IndexOf(operation); var next = Math.Clamp(old + delta, 0, CamJob.Operations.Count - 1); if (old == next) return; ClearPlayback(); InvalidatePreflight(); CamJob.Operations.RemoveAt(old); CamJob.Operations.Insert(next, operation); CamJob.NormalizeOrder(); RefreshOperations(); RebuildProgram(); SelectedOperation = operation; IsDirty = true; }
     public void CalculateOperation(CamOperationDefinition operation)
@@ -449,11 +554,20 @@ public partial class MainWindowViewModel : ViewModelBase
         RecalculateAll(); var problem = CamJob.Operations.FirstOrDefault(o => o.IsEnabled && MatchesActiveSheet(o) && o.Status != OperationStatus.Current); if (problem is not null) throw new InvalidOperationException($"{problem.Name}: {problem.Error ?? "Toolpath is not current."}");
         if (Program.Operations.Count == 0) throw new InvalidOperationException("Create at least one enabled toolpath first.");
         var safety = RunPreflight(); if (!safety.CanExport) throw new InvalidOperationException($"Preflight blocked export: {safety.ErrorCount} error(s). {safety.Findings.First(x => x.Severity == SafetySeverity.Error).Message}");
-        var origin=CncCad.Core.Transforms.MachineCoordinateTransform.OriginInDocument(Document.Job);var machine=CamJob.Machine!;GCodePreview = _postProcessor.Generate(Program, new MachineProfile { SafeZMm = Math.Max(Document.Job.SafeZMm,machine.DefaultClearanceMm),RapidRateMmPerMin=machine.RapidRateMmPerMin,MaximumSpindleRpm=machine.MaximumSpindleRpm,ParkXmm=machine.ParkXmm,ParkYmm=machine.ParkYmm,WorkZeroDocumentXmm=origin.X,WorkZeroDocumentYmm=origin.Y,WorkZeroZOffsetMm=Document.Job.ZZero==ZZeroPosition.MachineBed?Document.Job.ThicknessMm:0 }); return GCodePreview;
+        var machine=CamJob.Machine!;GCodePreview = _postProcessors.GetRequired(machine.PostProcessorId).Generate(Program, BuildPostMachine(machine)); return GCodePreview;
+    }
+    public IReadOnlyList<GeneratedToolpathFile> GenerateExportPrograms(ToolpathExportScope scope)
+    {
+        RecalculateAll();var machine=CamJob.Machine??throw new InvalidOperationException("Select a complete machine snapshot before export.");var post=_postProcessors.GetRequired(machine.PostProcessorId);var candidates=CamJob.Operations.Where(x=>x.IsEnabled&&MatchesActiveSheet(x)).OrderBy(x=>x.Order).ToArray();
+        if(scope==ToolpathExportScope.SelectedToolpath)candidates=SelectedOperation is{IsEnabled:true} selected&&MatchesActiveSheet(selected)?[selected]:throw new InvalidOperationException("Select a visible enabled toolpath first.");
+        if(candidates.Length==0)throw new InvalidOperationException("There are no visible enabled toolpaths to export.");var invalid=candidates.FirstOrDefault(x=>x.Status!=OperationStatus.Current||x.CalculatedToolpath is null);if(invalid is not null)throw new InvalidOperationException($"{invalid.Name}: {invalid.Error??"toolpath is not current"}");
+        if(scope==ToolpathExportScope.VisibleSeparateFiles)return candidates.Select(operation=>Generate([operation],GCodeExportFormat.SafeFileStem(operation.Name))).ToArray();
+        return [Generate(candidates,GCodeExportFormat.SafeFileStem(scope==ToolpathExportScope.SelectedToolpath?candidates[0].Name:Document.Job.Name))];
+        GeneratedToolpathFile Generate(IReadOnlyList<CamOperationDefinition> definitions,string name){var program=new ToolpathProgram{Name=name,Operations=definitions.Select(x=>x.CalculatedToolpath!).ToList()};var safety=RunPreflight(definitions,program);if(!safety.CanExport)throw new InvalidOperationException($"Preflight blocked export: {safety.Findings.First(x=>x.Severity==SafetySeverity.Error).Message}");var text=post.Generate(program,BuildPostMachine(machine));return new(name,post.FileExtension,text,safety.WarningCount);}
     }
     public IReadOnlyList<(MaterialSheetDefinition Sheet,string GCode,int WarningCount)> GenerateSheetPrograms()
     {
-        if(MaterialSheets.Count==0)throw new InvalidOperationException("Accept a multi-sheet nesting layout first.");RecalculateAll();var machine=CamJob.Machine??throw new InvalidOperationException("Select a complete machine snapshot before export.");var origin=CncCad.Core.Transforms.MachineCoordinateTransform.OriginInDocument(Document.Job);var profile=new MachineProfile{SafeZMm=Math.Max(Document.Job.SafeZMm,machine.DefaultClearanceMm),RapidRateMmPerMin=machine.RapidRateMmPerMin,MaximumSpindleRpm=machine.MaximumSpindleRpm,ParkXmm=machine.ParkXmm,ParkYmm=machine.ParkYmm,WorkZeroDocumentXmm=origin.X,WorkZeroDocumentYmm=origin.Y,WorkZeroZOffsetMm=Document.Job.ZZero==ZZeroPosition.MachineBed?Document.Job.ThicknessMm:0};var output=new List<(MaterialSheetDefinition,string,int)>();foreach(var sheet in MaterialSheets){var operations=CamJob.Operations.Where(x=>x.IsEnabled&&(x is ProfileOperationDefinition p&&p.MaterialSheetId==sheet.Id||x is EngraveOperationDefinition e&&e.MaterialSheetId==sheet.Id||x is VCarveOperationDefinition v&&v.MaterialSheetId==sheet.Id)).OrderBy(x=>x.Order).ToArray();var invalid=operations.FirstOrDefault(x=>x.CalculatedToolpath is null||x.Status!=OperationStatus.Current);if(invalid is not null)throw new InvalidOperationException($"{sheet.Name} · {invalid.Name}: {invalid.Error??"toolpath is not current"}");if(operations.Length==0)throw new InvalidOperationException($"{sheet.Name} has no enabled operations.");var program=new ToolpathProgram{Name=$"{Document.Job.Name} - {sheet.Name}",Operations=operations.Select(x=>x.CalculatedToolpath!).ToList()};var safety=RunPreflight(operations,program);if(!safety.CanExport)throw new InvalidOperationException($"{sheet.Name} preflight blocked export: {safety.Findings.First(x=>x.Severity==SafetySeverity.Error).Message}");output.Add((sheet,_postProcessor.Generate(program,profile),safety.WarningCount));}return output;
+        if(MaterialSheets.Count==0)throw new InvalidOperationException("Accept a multi-sheet nesting layout first.");RecalculateAll();var machine=CamJob.Machine??throw new InvalidOperationException("Select a complete machine snapshot before export.");var profile=BuildPostMachine(machine);var post=_postProcessors.GetRequired(machine.PostProcessorId);var output=new List<(MaterialSheetDefinition,string,int)>();foreach(var sheet in MaterialSheets){var operations=CamJob.Operations.Where(x=>x.IsEnabled&&OperationSheet(x)==sheet.Id).OrderBy(x=>x.Order).ToArray();var invalid=operations.FirstOrDefault(x=>x.CalculatedToolpath is null||x.Status!=OperationStatus.Current);if(invalid is not null)throw new InvalidOperationException($"{sheet.Name} · {invalid.Name}: {invalid.Error??"toolpath is not current"}");if(operations.Length==0)throw new InvalidOperationException($"{sheet.Name} has no enabled operations.");var program=new ToolpathProgram{Name=$"{Document.Job.Name} - {sheet.Name}",Operations=operations.Select(x=>x.CalculatedToolpath!).ToList()};var safety=RunPreflight(operations,program);if(!safety.CanExport)throw new InvalidOperationException($"{sheet.Name} preflight blocked export: {safety.Findings.First(x=>x.Severity==SafetySeverity.Error).Message}");output.Add((sheet,post.Generate(program,profile),safety.WarningCount));}return output;
     }
     public void LoadSelectedPlayback()
     {
@@ -461,7 +575,7 @@ public partial class MainWindowViewModel : ViewModelBase
         if (!operation.IsEnabled) throw new InvalidOperationException($"{operation.Name} is disabled. Enable it before previewing.");
         CalculateOperation(operation); if (operation.CalculatedToolpath is null) throw new InvalidOperationException($"{operation.Name}: {operation.Error ?? "Toolpath could not be calculated."}");
         var selectedProgram=new ToolpathProgram{Name=operation.Name,Operations=[operation.CalculatedToolpath]};var safety=RunPreflight([operation],selectedProgram);if(!safety.CanPreview)throw new InvalidOperationException($"Preflight blocked preview: {safety.Findings.First(x=>x.Severity==SafetySeverity.Error).Message}");
-        Playback.Load([new PlaybackProgramItem(operation.CalculatedToolpath, operation.Tool.DiameterMm)],CamJob.Machine?.RapidRateMmPerMin??5000); PlaybackSessionLabel = $"Selected · {operation.Name}"; FinishPlaybackLoad();
+        Playback.Load([new PlaybackProgramItem(operation.CalculatedToolpath, operation.Tool.DiameterMm)],CamJob.Machine?.RapidRateMmPerMin??5000); PlaybackSessionLabel = $"Selected · {operation.Name}"; FinishPlaybackLoad([operation]);
     }
     public void LoadAllPlayback()
     {
@@ -469,7 +583,7 @@ public partial class MainWindowViewModel : ViewModelBase
         if (enabled.Length == 0) throw new InvalidOperationException("Create or enable at least one toolpath first.");
         var invalid = enabled.FirstOrDefault(operation => operation.CalculatedToolpath is null); if (invalid is not null) throw new InvalidOperationException($"{invalid.Name}: {invalid.Error ?? "Toolpath could not be calculated."}");
         var previewProgram=new ToolpathProgram{Name=Document.Job.Name,Operations=enabled.Select(x=>x.CalculatedToolpath!).ToList()};var safety=RunPreflight(enabled,previewProgram);if(!safety.CanPreview)throw new InvalidOperationException($"Preflight blocked preview: {safety.Findings.First(x=>x.Severity==SafetySeverity.Error).Message}");
-        Playback.Load(enabled.Select(operation => new PlaybackProgramItem(operation.CalculatedToolpath!, operation.Tool.DiameterMm)),CamJob.Machine?.RapidRateMmPerMin??5000); PlaybackSessionLabel = $"All enabled · {enabled.Length} operation{(enabled.Length == 1 ? "" : "s")}"; FinishPlaybackLoad();
+        Playback.Load(enabled.Select(operation => new PlaybackProgramItem(operation.CalculatedToolpath!, operation.Tool.DiameterMm)),CamJob.Machine?.RapidRateMmPerMin??5000); PlaybackSessionLabel = $"All enabled · {enabled.Length} operation{(enabled.Length == 1 ? "" : "s")}"; FinishPlaybackLoad(enabled);
     }
     public void UpdatePlaybackStatus()
     {
@@ -494,32 +608,59 @@ public partial class MainWindowViewModel : ViewModelBase
     public void AddDefaultFixture(){var index=CamJob.Fixtures.Count+1;var fixture=new FixtureDefinition{Name=$"Clamp {index}",MinXmm=10+(index-1)*40,MinYmm=10,MaxXmm=40+(index-1)*40,MaxYmm=40,TopZmm=10,RequiredClearanceMm=2};CamJob.Fixtures.Add(fixture);Fixtures.Add(fixture);SelectedFixture=fixture;InvalidatePreflight();IsDirty=true;}
     public void FixtureChanged(){InvalidatePreflight();IsDirty=true;Message="Fixture updated — run preflight again";}
     public void DeleteSelectedFixture(){if(SelectedFixture is null)return;CamJob.Fixtures.Remove(SelectedFixture);Fixtures.Remove(SelectedFixture);SelectedFixture=null;InvalidatePreflight();IsDirty=true;}
-    private void FinishPlaybackLoad() { Playback.SetSpeed(PlaybackSpeed); UpdatePlaybackStatus(); }
+    private void FinishPlaybackLoad(IEnumerable<CamOperationDefinition> operations) { Playback.SetSpeed(PlaybackSpeed);StockSimulation=_stockSimulationService.Simulate(Document.Job.WidthMm,Document.Job.HeightMm,Document.Job.ThicknessMm,operations); UpdatePlaybackStatus(); }
     private static string FormatTime(TimeSpan value) => value.TotalHours >= 1 ? value.ToString(@"hh\:mm\:ss") : value.ToString(@"mm\:ss");
     private void RebuildProgram() { Program.Name = Document.Job.Name; Program.Operations = CamJob.Operations.OrderBy(o => o.Order).Where(o => o.IsEnabled && o.Status == OperationStatus.Current && o.CalculatedToolpath is not null&&MatchesActiveSheet(o)).Select(o => o.CalculatedToolpath!).ToList(); }
-    private bool MatchesActiveSheet(CamOperationDefinition operation){var sheet=operation switch{ProfileOperationDefinition p=>p.MaterialSheetId,EngraveOperationDefinition e=>e.MaterialSheetId,VCarveOperationDefinition v=>v.MaterialSheetId,_=>null};return SelectedMaterialSheet is null?sheet is null:sheet==SelectedMaterialSheet.Id;}
+    private static Guid? OperationSheet(CamOperationDefinition operation)=>operation switch{ProfileOperationDefinition p=>p.MaterialSheetId,EngraveOperationDefinition e=>e.MaterialSheetId,VCarveOperationDefinition v=>v.MaterialSheetId,PocketOperationDefinition p=>p.MaterialSheetId,DrillOperationDefinition d=>d.MaterialSheetId,_=>null};
+    private bool MatchesActiveSheet(CamOperationDefinition operation){var sheet=OperationSheet(operation);return SelectedMaterialSheet is null?sheet is null:sheet==SelectedMaterialSheet.Id;}
+    private MachineProfile BuildPostMachine(MachineSnapshot machine){var origin=CncCad.Core.Transforms.MachineCoordinateTransform.OriginInDocument(Document.Job);return new(){PostProcessor=machine.PostProcessorId,SafeZMm=Math.Max(Document.Job.SafeZMm,machine.DefaultClearanceMm),RapidRateMmPerMin=machine.RapidRateMmPerMin,MaximumSpindleRpm=machine.MaximumSpindleRpm,ParkXmm=machine.ParkXmm,ParkYmm=machine.ParkYmm,WorkZeroDocumentXmm=origin.X,WorkZeroDocumentYmm=origin.Y,WorkZeroZOffsetMm=Document.Job.ZZero==ZZeroPosition.MachineBed?Document.Job.ThicknessMm:0};}
     private void RefreshOperations() { var selected = SelectedOperation; Operations.Clear(); foreach (var operation in CamJob.Operations.OrderBy(o => o.Order).Where(MatchesActiveSheet)) Operations.Add(operation); SelectedOperation = selected is not null&&Operations.Contains(selected)?selected:null; }
-    public async Task AddToolAsync() { var tool = new CncTool { Name = "6mm End Mill", ToolNumber = Tools.Count + 1, DiameterMm = 6, CuttingLengthMm=24, OverallLengthMm=50, ShankDiameterMm=6, StickOutMm=30 }; await _toolLibrary.SaveAsync(tool); Tools.Add(tool); SelectedTool = tool; Message = "Tool added to the persistent library"; }
+    public async Task AddToolAsync() { var tool = new CncTool { Name = "New 6mm End Mill", ToolNumber = Tools.Count + 1, DiameterMm = 6, CuttingLengthMm=24, OverallLengthMm=50, ShankDiameterMm=6, StickOutMm=30 }; await _toolLibrary.SaveAsync(tool); Tools.Add(tool);RefreshToolFilter(); SelectedTool = tool; Message = "Tool added to the persistent library"; }
+    public async Task SaveSelectedToolAsync(){if(SelectedTool is null)throw new InvalidOperationException("Select a tool.");await _toolLibrary.SaveAsync(SelectedTool);RefreshToolFilter();Message=$"Saved {SelectedTool.Name}";}
+    public async Task DeleteSelectedToolAsync(){if(SelectedTool is null)return;var tool=SelectedTool;await _toolLibrary.DeleteAsync(tool.Id);Tools.Remove(tool);RefreshToolFilter();Message=$"Deleted {tool.Name}";}
     public async Task SaveProjectAsync(string path)
     {
-        var fullPath=Path.GetFullPath(path);var directory=Path.GetDirectoryName(fullPath)??Directory.GetCurrentDirectory();Directory.CreateDirectory(directory);var temporary=Path.Combine(directory,$".{Path.GetFileName(fullPath)}.{Guid.NewGuid():N}.tmp");
-        try{await using(var stream=File.Create(temporary)){await _projectSerializer.SaveAsync(new CncProject { Document = Document, CamJob = CamJob,Nesting=NestingJob }, stream);await stream.FlushAsync();}File.Move(temporary,fullPath,true);}finally{if(File.Exists(temporary))File.Delete(temporary);}
-        ProjectPath = fullPath; IsDirty = false; JobTitle = Document.Job.Name; Message = $"Saved {Path.GetFileName(path)}";
-        await _recentProjectStore.AddAsync(ProjectPath);
-        await RefreshRecentProjectsAsync();
+        var fullPath=NormalizeProjectPath(path);var directory=Path.GetDirectoryName(fullPath)??Directory.GetCurrentDirectory();Directory.CreateDirectory(directory);var temporary=Path.Combine(directory,$".{Path.GetFileName(fullPath)}.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            await using(var stream=new FileStream(temporary,FileMode.CreateNew,FileAccess.Write,FileShare.None,65536,FileOptions.Asynchronous|FileOptions.WriteThrough)){await _projectSerializer.SaveAsync(new CncProject { Document = Document, CamJob = CamJob,Nesting=NestingJob,PreviewSettings=PreviewSettings }, stream);await stream.FlushAsync();stream.Flush(true);}
+            File.Move(temporary,fullPath,true);
+        }
+        finally{if(File.Exists(temporary))File.Delete(temporary);}
+        ProjectPath = fullPath; IsDirty = false; JobTitle = Document.Job.Name; Message = $"Saved {Path.GetFileName(fullPath)}";
+        if(_recoveryStore is not null){await _recoveryStore.DeleteJobAsync(_recoveryJobKey);await RefreshRecoveriesAsync();}
+        try{await _recentProjectStore.AddAsync(ProjectPath);await RefreshRecentProjectsAsync();}
+        catch{Message=$"Saved {Path.GetFileName(fullPath)} (recent projects could not be updated)";}
+    }
+    public static string NormalizeProjectPath(string path)
+    {
+        if(string.IsNullOrWhiteSpace(path))throw new ArgumentException("Choose a project filename.",nameof(path));
+        const string extension=".cnccad";
+        var fullPath=Path.GetFullPath(path.Trim());
+        var directory=Path.GetDirectoryName(fullPath)??Directory.GetCurrentDirectory();
+        var fileName=Path.GetFileName(fullPath);
+        var hadProjectExtension=false;
+        while(fileName.EndsWith(extension,StringComparison.OrdinalIgnoreCase))
+        {
+            fileName=fileName[..^extension.Length];
+            hadProjectExtension=true;
+        }
+        if(string.IsNullOrWhiteSpace(fileName))throw new ArgumentException("Choose a project filename.",nameof(path));
+        var normalized=hadProjectExtension?fileName+extension:Path.ChangeExtension(fileName,extension);
+        return Path.GetFullPath(Path.Combine(directory,normalized));
     }
     public async Task OpenProjectAsync(string path)
     {
-        ClearPlayback();
         await using var stream = File.OpenRead(path);
         var loaded = await _projectSerializer.LoadAsync(stream); var document = loaded.Document;
-        Document.Version = document.Version; Document.Job = document.Job; Document.Layers = document.Layers;Document.ActiveLayerId=document.ActiveLayerId; Document.Entities = document.Entities; CamJob = loaded.CamJob;NestingJob=loaded.Nesting;RefreshNesting(); Fixtures.Clear();foreach(var fixture in CamJob.Fixtures)Fixtures.Add(fixture);Selection.Clear(); _history.Clear(); UpdateHistoryState(); SelectionChanged();InvalidatePreflight();RefreshLayers();
+        ClearPlayback();
+        Document.Version = document.Version; Document.Job = document.Job; Document.Layers = document.Layers;Document.ActiveLayerId=document.ActiveLayerId; Document.Entities = document.Entities; CamJob = loaded.CamJob;PreviewSettings=loaded.PreviewSettings;ToolpathWorkspace=new(CamJob,Operations,Tools);OnPropertyChanged(nameof(ToolpathWorkspace));NestingJob=loaded.Nesting;RefreshNesting(); Fixtures.Clear();foreach(var fixture in CamJob.Fixtures)Fixtures.Add(fixture);Selection.Clear(); _history.Clear(); UpdateHistoryState(); SelectionChanged();InvalidatePreflight();RefreshLayers();
         Program.Name = document.Job.Name; RecalculateAll();
-        ProjectPath = Path.GetFullPath(path); HasJob = true; IsDirty = false; JobTitle = document.Job.Name;
+        ProjectPath = Path.GetFullPath(path); HasJob = true; IsDirty = false; JobTitle = document.Job.Name;WorkspaceMode=CncCad.Infrastructure.Settings.WorkspaceMode.Design;
         GCodePreview = "Toolpaths are recalculated after opening a project."; Message = $"Opened {Path.GetFileName(path)}";
         RefreshWorkspaceState(); OnPropertyChanged(nameof(MaterialSummary));OnPropertyChanged(nameof(OriginSummary));
-        await _recentProjectStore.AddAsync(ProjectPath);
-        await RefreshRecentProjectsAsync();
+        try{await _recentProjectStore.AddAsync(ProjectPath);await RefreshRecentProjectsAsync();}
+        catch{Message=$"Opened {Path.GetFileName(path)} (recent projects could not be updated)";}
     }
     public async Task RemoveRecentProjectAsync(string path) { await _recentProjectStore.RemoveAsync(path); await RefreshRecentProjectsAsync(); }
     public async Task ClearRecentProjectsAsync() { await _recentProjectStore.ClearAsync(); await RefreshRecentProjectsAsync(); }
@@ -528,8 +669,33 @@ public partial class MainWindowViewModel : ViewModelBase
         RecentProjects.Clear();
         foreach (var project in await _recentProjectStore.GetAsync()) RecentProjects.Add(project);
     }
+    private async Task RefreshRecoveriesAsync(){RecoverableProjects.Clear();if(_recoveryStore is null)return;foreach(var snapshot in await _recoveryStore.GetRecoverableAsync())RecoverableProjects.Add(snapshot);}
+    public async Task SaveRecoveryIfDueAsync()
+    {
+        if(_recoveryStore is null||!HasJob||!IsDirty)return;var now=DateTimeOffset.UtcNow;if(now-_dirtySinceUtc<TimeSpan.FromSeconds(30)||now-_lastRecoveryUtc<TimeSpan.FromSeconds(30))return;
+        await _recoveryStore.SaveAsync(_recoveryJobKey,Document.Job.Name,ProjectPath,new CncProject{Document=Document,CamJob=CamJob,Nesting=NestingJob,PreviewSettings=PreviewSettings});_lastRecoveryUtc=now;await RefreshRecoveriesAsync();Message="Recovery snapshot saved";
+    }
+    public async Task OpenRecoveryAsync(RecoverySnapshotInfo snapshot)
+    {
+        if(_recoveryStore is null)throw new InvalidOperationException("Recovery storage is unavailable.");var loaded=await _recoveryStore.LoadAsync(snapshot);ApplyProject(loaded);ProjectPath=snapshot.ProjectPath;HasJob=true;IsDirty=true;JobTitle=loaded.Document.Job.Name+" (Recovered)";WorkspaceMode=CncCad.Infrastructure.Settings.WorkspaceMode.Design;Message=$"Recovered {snapshot.DisplayName} — save to keep it";
+    }
+    public async Task DiscardRecoveryAsync(RecoverySnapshotInfo snapshot){if(_recoveryStore is null)return;await _recoveryStore.DeleteJobAsync(snapshot.JobKey);await RefreshRecoveriesAsync();}
+    public async Task DiscardCurrentRecoveryAsync(){if(_recoveryStore is null)return;await _recoveryStore.DeleteJobAsync(_recoveryJobKey);await RefreshRecoveriesAsync();}
+    partial void OnIsDirtyChanged(bool value){if(value){_dirtySinceUtc=DateTimeOffset.UtcNow;if(_lastRecoveryUtc>_dirtySinceUtc)_lastRecoveryUtc=DateTimeOffset.MinValue;}}
     public void SetWorkspaceFocus(WorkspaceFocus focus) { WorkspaceFocus = focus; RefreshWorkflowStage(); }
     public void SetWorkspaceView(WorkspaceView view) { ActiveWorkspaceView = view; IsToolpathPreview=view==WorkspaceView.ToolpathPreview; ShowPlaybackControls=IsToolpathPreview&&HasPlayback; RefreshWorkflowStage(); }
+    public void SetWorkspaceMode(WorkspaceMode mode){WorkspaceMode=mode;Shell.Mode=mode;WorkspaceFocus=mode==CncCad.Infrastructure.Settings.WorkspaceMode.Toolpaths?WorkspaceFocus.Toolpaths:WorkspaceFocus.Design;RefreshWorkflowStage();}
+    public void SetViewportLayout(ViewportLayout layout){ViewportLayout=layout;Shell.Layout=layout;IsToolpathPreview=layout!=CncCad.Infrastructure.Settings.ViewportLayout.Design2D;ActiveWorkspaceView=IsToolpathPreview?WorkspaceView.ToolpathPreview:WorkspaceView.Design;ShowPlaybackControls=IsToolpathPreview&&HasPlayback;RefreshWorkflowStage();}
+    public void SetResponsiveLayout(double width){ResponsiveLayout=WorkspaceLayoutMetrics.ForWidth(width);Shell.ResponsiveLayout=ResponsiveLayout;}
+    public void OpenDesignTask(DesignTaskPage page)=>DesignTaskPage=page;
+    public void CloseDesignTask()=>DesignTaskPage=DesignTaskPage.Palette;
+    public void OpenToolpathTask(ToolpathTaskPage page)=>ToolpathTaskPage=page;
+    public void CloseToolpathTask(){if(IsOperationEditorOpen)CancelOperationEditor();else ToolpathTaskPage=ToolpathTaskPage.Palette;}
+    partial void OnResponsiveLayoutChanged(ResponsiveLayoutState value){OnPropertyChanged(nameof(IsRegularLayout));OnPropertyChanged(nameof(IsCompactLayout));OnPropertyChanged(nameof(ShowRegularPreviewAppearance));}
+    partial void OnIsToolpathPreviewChanged(bool value)=>OnPropertyChanged(nameof(ShowRegularPreviewAppearance));
+    partial void OnWorkspaceModeChanged(WorkspaceMode value){OnPropertyChanged(nameof(IsDesignMode));OnPropertyChanged(nameof(IsToolpathsMode));}
+    partial void OnDesignTaskPageChanged(DesignTaskPage value){OnPropertyChanged(nameof(IsDesignPalette));OnPropertyChanged(nameof(IsDesignConstructionTask));OnPropertyChanged(nameof(IsDesignPositionTask));OnPropertyChanged(nameof(IsDesignTransformTask));OnPropertyChanged(nameof(IsDesignEditTask));OnPropertyChanged(nameof(IsDesignOffsetTask));OnPropertyChanged(nameof(IsDesignTextTask));OnPropertyChanged(nameof(IsDesignAppearanceTask));OnPropertyChanged(nameof(IsDesignRepairTask));OnPropertyChanged(nameof(IsDesignSnappingTask));OnPropertyChanged(nameof(IsDesignLayersTask));OnPropertyChanged(nameof(IsDesignNestingTask));OnPropertyChanged(nameof(IsDesignJobTask));OnPropertyChanged(nameof(DesignTaskTitle));}
+    partial void OnToolpathTaskPageChanged(ToolpathTaskPage value){OnPropertyChanged(nameof(IsToolpathPalette));OnPropertyChanged(nameof(IsToolLibraryTask));OnPropertyChanged(nameof(IsMachineFixturesTask));OnPropertyChanged(nameof(ToolpathTaskTitle));}
     public void SetActiveToolGuidance(CanvasTool tool)
     {
         IsSelectActive = tool == CanvasTool.Select;
@@ -541,13 +707,14 @@ public partial class MainWindowViewModel : ViewModelBase
             CanvasTool.Polyline => "Click each point. Enter or double-click finishes; C closes; Escape cancels.",
             CanvasTool.Rectangle => "Drag from one corner to the opposite corner. Escape cancels.",
             CanvasTool.Circle => "Click the centre, then click the radius. Escape cancels.",
+            CanvasTool.DrillPoint=>"Click to place an explicit drilling point.",
             CanvasTool.Trim => "Scissors: hover the portion to remove, then click. Cutting vectors remain unchanged.",
             _ => "Click the start, a point on the arc, then the end. Escape cancels."
         };
     }
     private void RefreshWorkspaceState()
     {
-        HasGeometry = Document.Entities.Count > 0; HasOperations = CamJob.Operations.Count > 0; ShowEmptyDesign = HasJob && !HasGeometry;
+        HasGeometry = Document.Entities.Count > 0; HasOperations = CamJob.Operations.Count > 0;
         RefreshWorkflowStage();
         if (!HasJob) { CanCreateProfile = false; ProfileGuidance = "Create a job, then select closed vectors."; }
         else if (!HasSelection) { CanCreateProfile = false; ProfileGuidance = "Select one or more rectangles, circles, or closed polylines."; }
@@ -562,4 +729,12 @@ public partial class MainWindowViewModel : ViewModelBase
     }
     private void RefreshWorkflowStage()=>WorkflowStage=!HasJob?"1  Job Setup":IsToolpathPreview?"4  Preview & Export":WorkspaceFocus==WorkspaceFocus.Toolpaths?"3  Toolpaths":"2  Design";
     private static bool IsProfileContour(CadEntity entity)=>entity is RectangleEntity or CircleEntity or PolylineEntity{IsClosed:true,Points.Count:>=3}||entity is VectorPathEntity{Figures.Count:1} path&&path.Figures[0].IsClosed;
+    private static CamOperationDefinition CopyOperation(CamOperationDefinition value)
+    {
+        CamOperationDefinition copy=value switch{ProfileOperationDefinition operation=>operation.Duplicate(),PocketOperationDefinition operation=>operation.Duplicate(),DrillOperationDefinition operation=>operation.Duplicate(),EngraveOperationDefinition operation=>operation.Duplicate(),VCarveOperationDefinition operation=>operation.Duplicate(),_=>throw new NotSupportedException(value.GetType().Name)};copy.Name=value.Name;copy.Order=value.Order;return copy;
+    }
+    private void ApplyProject(CncProject loaded)
+    {
+        var document=loaded.Document;ClearPlayback();Document.Version=document.Version;Document.Job=document.Job;Document.Layers=document.Layers;Document.ActiveLayerId=document.ActiveLayerId;Document.Entities=document.Entities;CamJob=loaded.CamJob;PreviewSettings=loaded.PreviewSettings;ToolpathWorkspace=new(CamJob,Operations,Tools);OnPropertyChanged(nameof(ToolpathWorkspace));NestingJob=loaded.Nesting;RefreshNesting();Fixtures.Clear();foreach(var fixture in CamJob.Fixtures)Fixtures.Add(fixture);Selection.Clear();_history.Clear();UpdateHistoryState();SelectionChanged();InvalidatePreflight();RefreshLayers();Program.Name=document.Job.Name;RecalculateAll();RefreshWorkspaceState();OnPropertyChanged(nameof(MaterialSummary));OnPropertyChanged(nameof(OriginSummary));
+    }
 }

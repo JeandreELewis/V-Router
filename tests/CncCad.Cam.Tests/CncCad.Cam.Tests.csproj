@@ -18,5 +18,5 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
-  <ItemGroup><ProjectReference Include="..\..\src\CncCad.Core\CncCad.Core.csproj" /><ProjectReference Include="..\..\src\CncCad.Cam\CncCad.Cam.csproj" /><ProjectReference Include="..\..\src\CncCad.Simulation\CncCad.Simulation.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="..\..\src\CncCad.Core\CncCad.Core.csproj" /><ProjectReference Include="..\..\src\CncCad.Cam\CncCad.Cam.csproj" /><ProjectReference Include="..\..\src\CncCad.Simulation\CncCad.Simulation.csproj" /><ProjectReference Include="..\..\src\CncCad.IO\CncCad.IO.csproj" /></ItemGroup>
 </Project>

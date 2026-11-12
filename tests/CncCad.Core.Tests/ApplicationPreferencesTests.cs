@@ -11,7 +11,7 @@ public sealed class ApplicationPreferencesTests
         try
         {
             var path=Path.Combine(directory,"preferences.json");var store=new JsonApplicationPreferencesStore(path);
-            var expected=new ApplicationPreferences{StartupWorkspace=StartupWorkspace.Toolpaths,ShowGrid=false,GridSpacingMm=2.5,SnappingEnabled=false,SnapToEndpoints=false,Accent=AccentPreference.System};
+            var expected=new ApplicationPreferences{StartupWorkspace=StartupWorkspace.Toolpaths,LastWorkspaceMode=WorkspaceMode.Toolpaths,ViewportLayout=ViewportLayout.VerticalSplit,ShowGrid=false,GridSpacingMm=2.5,SnappingEnabled=false,SnapToEndpoints=false,Accent=AccentPreference.System};
             await store.SaveAsync(expected);var actual=await store.LoadAsync();
             Assert.Equal(expected,actual);await store.ResetAsync();Assert.Equal(ApplicationPreferences.Defaults,await store.LoadAsync());
         }

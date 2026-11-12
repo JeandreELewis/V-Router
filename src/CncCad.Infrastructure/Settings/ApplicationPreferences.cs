@@ -4,6 +4,8 @@ namespace CncCad.Infrastructure.Settings;
 
 public enum AccentPreference { CncBlue, System }
 public enum StartupWorkspace { Design, Toolpaths }
+public enum WorkspaceMode { Startup, Design, Toolpaths }
+public enum ViewportLayout { Design2D, Preview3D, HorizontalSplit, VerticalSplit }
 
 public sealed record ApplicationPreferences
 {
@@ -18,6 +20,8 @@ public sealed record ApplicationPreferences
     public bool ShowToolpaths { get; init; } = true;
     public AccentPreference Accent { get; init; } = AccentPreference.CncBlue;
     public bool ConfirmBeforeReplacingUnsavedJob { get; init; } = true;
+    public WorkspaceMode LastWorkspaceMode { get; init; } = WorkspaceMode.Startup;
+    public ViewportLayout ViewportLayout { get; init; } = ViewportLayout.Design2D;
 
     public static ApplicationPreferences Defaults { get; } = new();
 }

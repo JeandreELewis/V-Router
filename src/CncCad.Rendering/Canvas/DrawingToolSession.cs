@@ -19,6 +19,7 @@ public sealed class DrawingToolSession
         _cursor = point;
         switch (Tool)
         {
+            case CanvasTool.DrillPoint:return new DrillPointEntity{LayerId=layerId,Position=point};
             case CanvasTool.Rectangle: _points.Clear(); _points.Add(point); _dragging = true; break;
             case CanvasTool.Line:
                 if (_points.Count == 0) _points.Add(point);

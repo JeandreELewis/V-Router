@@ -2,14 +2,13 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Data.Core;
 using Avalonia.Data.Core.Plugins;
-using System.Linq;
 using Avalonia.Markup.Xaml;
 using CncCad.App.ViewModels;
 using CncCad.App.Views;
+using CncCad.Infrastructure.Fonts;
 using CncCad.Infrastructure.Logging;
 using CncCad.Infrastructure.Persistence;
 using CncCad.Infrastructure.Settings;
-using CncCad.Infrastructure.Fonts;
 using Microsoft.EntityFrameworkCore;
 
 namespace CncCad.App;
@@ -25,14 +24,15 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var dataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "cnc-cad");
+            var dataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "v-router");
             Directory.CreateDirectory(dataDirectory);
             _ = LoggingSetup.Create(dataDirectory);
-            var options = new DbContextOptionsBuilder<ToolLibraryDbContext>().UseSqlite($"Data Source={Path.Combine(dataDirectory, "cnc-cad.db")}").Options;
+            var options = new DbContextOptionsBuilder<ToolLibraryDbContext>().UseSqlite($"Data Source={Path.Combine(dataDirectory, "v-router.db")}").Options;
             var factory = new ToolLibraryContextFactory(options);
             var recentProjects = new JsonRecentProjectStore(Path.Combine(dataDirectory, "recent-projects.json"));
             var preferences = new JsonApplicationPreferencesStore(Path.Combine(dataDirectory, "preferences.json"));
-            var viewModel = new MainWindowViewModel(new SqliteToolLibrary(factory), recentProjects, new SqliteMachineProfileRepository(factory),new SkiaTextOutlineService(),new DesktopFontCatalog());
+            var recovery = new CncCad.IO.Projects.JsonRecoveryStore(Path.Combine(dataDirectory, "recovery"));
+            var viewModel = new MainWindowViewModel(new SqliteToolLibrary(factory), recentProjects, new SqliteMachineProfileRepository(factory), new SkiaTextOutlineService(), new DesktopFontCatalog(), recovery, new SqliteMaterialLibrary(factory), new SqliteToolCuttingPresetRepository(factory));
             desktop.MainWindow = new MainWindow(preferences)
             {
                 DataContext = viewModel,

@@ -25,7 +25,27 @@ public class PersistentProfileTests
     [Fact]
     public void Engraving_OpenCenterlines_GeneratesIndependentDepthPasses()
     {
-        var line=new LineEntity{Start=new(0,0),End=new(20,0)};var path=new PolylineEntity{Points=[new(30,0),new(30,10),new(40,10)]};var operation=new EngraveOperationDefinition{Name="Lettering",GeometryIds=[line.Id,path.Id],Tool=new(){DiameterMm=1,Name="Engraver",FeedRateMmPerMin=800,PlungeRateMmPerMin=300,StepDownMm=.5},CutDepthMm=1,PassDepthMm=.5,SafeZMm=5,FeedRateMmPerMin=800,PlungeRateMmPerMin=300};var result=new EngraveOperationCalculator().Calculate(operation,new Dictionary<Guid,CadEntity>{{line.Id,line},{path.Id,path}});Assert.True(result.Success);Assert.Equal(6,result.Toolpath!.Moves.OfType<RapidMove>().Count());Assert.Contains(result.Toolpath.Moves.OfType<LinearMove>(),x=>Math.Abs(x.Z+.5)<1e-9);Assert.Contains(result.Toolpath.Moves.OfType<LinearMove>(),x=>Math.Abs(x.Z+1)<1e-9);
+        var line=new LineEntity{Start=new(0,0),End=new(20,0)};var path=new PolylineEntity{Points=[new(30,0),new(30,10),new(40,10)]};var operation=new EngraveOperationDefinition{Name="Lettering",GeometryIds=[line.Id,path.Id],Tool=new(){DiameterMm=1,Name="Engraver",FeedRateMmPerMin=800,PlungeRateMmPerMin=300,StepDownMm=.5},CutDepthMm=1,PassDepthMm=.5,SafeZMm=5,FeedRateMmPerMin=800,PlungeRateMmPerMin=300};var result=new EngraveOperationCalculator().Calculate(operation,new Dictionary<Guid,CadEntity>{{line.Id,line},{path.Id,path}});Assert.True(result.Success);Assert.Equal(8,result.Toolpath!.Moves.OfType<RapidMove>().Count());Assert.Contains(result.Toolpath.Moves.OfType<LinearMove>(),x=>Math.Abs(x.Z+.5)<1e-9);Assert.Contains(result.Toolpath.Moves.OfType<LinearMove>(),x=>Math.Abs(x.Z+1)<1e-9);
+    }
+    [Fact]
+    public void OpenEngravingRepositionsAtClearanceBeforeEveryPlunge()
+    {
+        var line = new LineEntity { Start = new(10, 10), End = new(60, 30) };
+        var operation = new EngraveOperationDefinition { GeometryIds = [line.Id], Tool = new() { DiameterMm = 1 },
+            CutDepthMm = 3, PassDepthMm = 1, SafeZMm = 5, FeedRateMmPerMin = 800, PlungeRateMmPerMin = 200 };
+        var result = new EngraveOperationCalculator().Calculate(operation, new Dictionary<Guid, CadEntity> { [line.Id] = line });
+        Assert.True(result.Success);
+        var moves = result.Toolpath!.Moves;
+        var plunges = 0;
+        for (var i = 1; i < moves.Count; i++)
+        {
+            if (moves[i] is not LinearMove { FeedRate: 200 } plunge) continue;
+            var approach = Assert.IsType<RapidMove>(moves[i - 1]);
+            Assert.Equal(plunge.End, approach.End);
+            Assert.Equal(5, approach.Z);
+            plunges++;
+        }
+        Assert.Equal(3, plunges);
     }
     private static ProfileOperationDefinition Operation(CadEntity entity, ProfileSide side = ProfileSide.Outside) => new()
     {

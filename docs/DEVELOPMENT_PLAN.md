@@ -1,6 +1,6 @@
 # Development Plan
 
-Last updated: 2026-08-23
+Last updated: 2026-11-12
 
 ## Overall architecture
 
@@ -8,7 +8,7 @@ The application is split into framework-independent Core, CAM and PostProcessor 
 
 ## Current phase
 
-Milestone 7 persistent multi-contour profile CAM — implemented and undergoing hardening.
+Public-alpha hardening of the project-v8 multi-operation CNC router workflow.
 
 ## Completed
 
@@ -79,25 +79,26 @@ Milestone 7 persistent multi-contour profile CAM — implemented and undergoing 
 
 ## In progress
 
-- Milestone hardening: dedicated tool library CRUD screen, close-path UI automation, full affine-transform support and responsive top command-bar overflow
-- Resolve upstream `SQLitePCLRaw.lib.e_sqlite3` security advisory when a patched compatible native bundle is published/selected
+- Cross-platform packaging, signing, release automation and installation testing
+- Expanded UI automation, accessibility checks and responsive-layout validation
+- Controlled UCCNC air-cut and real-material acceptance runs
+- Tool-library CSV/JSON import/export, XLSX mapping and image storage
+- Advanced DXF, vector-repair and font-library hardening
 
 ## Upcoming
 
-1. Full tool-library CRUD, search, CSV/JSON import/export, XLSX mapping wizard and image storage
-2. Pocket, drill and engraving operations
-3. SVG/DXF import, trim, curve-node editing, text/shapes, progressive stock-removal simulation, tabs, ramps and leads
+1. Additional production postprocessors and machine profiles
+2. Broader hardware and controller validation
+3. Common-line cutting, arbitrary-angle nesting and advanced vector topology
 
 ## Known issues
 
-- Profile selection accepts closed entities directly; automatic joining of separate lines and arcs is not yet implemented.
-- Editing job setup reframes the material automatically.
-- The “Add 6mm tool” action is intentionally narrow; full library management is next.
-- Project save/open and recent-project workflows are exposed; automatic recovery files are not yet implemented.
-- Version 1 project files open as geometry-only jobs and upgrade on their next normal save.
-- Entity `Matrix2D` exists for future affine operations, but interactive rotation/scaling and fully transformed hit testing are not implemented.
-- At narrow desktop widths, panel focus modes improve working area; a future overflow menu can further simplify the top project bar.
-- SQLite native package 2.1.11 reports GHSA-2m69-gcr7-jv3q during restore.
+- Full nested DXF INSERT expansion and rational splines are not implemented.
+- Exact trim/split/extend/weld does not yet cover every arc, ellipse and Bézier combination.
+- Common-line cutting and arbitrary-angle nesting rotation remain deferred.
+- The complete licensed centerline-font catalog and font favorites/recent persistence remain content tasks.
+- UCCNC is currently the only production postprocessor.
+- UI automation and hardware acceptance coverage remain smaller than the engine test suite.
 
 ## Testing status
 
@@ -107,14 +108,14 @@ Core/IO/Infrastructure/Rendering sessions: distance, bounds, rotation, viewport 
 
 - Project: `.cnccad` JSON save/open UI
 - G-code export: `.txt`, `.nc`, `.tap`
-- SVG/DXF: planned
+- SVG/DXF: import implemented with documented advanced-DXF limitations
 - Tool import/export: planned
 
 ## Supported toolpaths
 
 - Multi-contour profile: rectangle, closed polyline and circle; outside, inside and on-vector; climb and conventional
 - Constant-depth engrave: line, polyline, arc, ellipse, native vector paths, and portable text strokes
-- Pocket and drill: planned
+- Pocket and drill: implemented for concentric flat pockets with islands and simple/peck drilling from circle centres or explicit drill points
 
 ## Supported postprocessors
 

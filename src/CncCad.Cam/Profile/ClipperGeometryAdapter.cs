@@ -26,6 +26,27 @@ internal static class ClipperGeometryAdapter
         return result.Select(path => (IReadOnlyList<Point2D>)path.Select(point => new Point2D(point.x, point.y)).ToArray()).Where(path => path.Count >= 3 && Math.Abs(SignedArea(path)) > 1e-8).ToArray();
     }
 
+    public static IReadOnlyList<IReadOnlyList<Point2D>> PocketOffsets(IEnumerable<IReadOnlyList<Point2D>> contours, double initialInset, double stepOver)
+    {
+        if (initialInset < 0 || stepOver <= 0) throw new ArgumentOutOfRangeException(nameof(stepOver));
+        var source = new PathsD(contours.Select(contour => new PathD(contour.Select(point => new PointD(point.X, point.Y)))));
+        if (source.Count == 0) return [];
+        var region = Clipper.Union(source, FillRule.EvenOdd);
+        var result = new List<IReadOnlyList<Point2D>>();
+        var inset = Math.Max(initialInset, 1e-6);
+        for (var guard = 0; guard < 10000; guard++, inset += stepOver)
+        {
+            var level = Clipper.InflatePaths(region, -inset, JoinType.Miter, EndType.Polygon, 6);
+            if (level.Count == 0) break;
+            foreach (var path in level)
+            {
+                var points = path.Select(point => new Point2D(point.x, point.y)).ToArray();
+                if (points.Length >= 3 && Math.Abs(SignedArea(points)) > 1e-8) result.Add(points);
+            }
+        }
+        return result;
+    }
+
     public static double SignedArea(IReadOnlyList<Point2D> path)
     {
         var area = 0d; for (var i = 0; i < path.Count; i++) { var next = path[(i + 1) % path.Count]; area += path[i].X * next.Y - next.X * path[i].Y; } return area / 2;

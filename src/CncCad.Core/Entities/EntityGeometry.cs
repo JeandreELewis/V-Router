@@ -10,6 +10,7 @@ public static class EntityGeometry
         PolylineEntity polyline => polyline.Points.Select(polyline.Transform.Transform).ToArray(),
         RectangleEntity rectangle => rectangle.Corners.Select(rectangle.Transform.Transform).ToArray(),
         CircleEntity circle => Enumerable.Range(0, curveSegments).Select(i => circle.Transform.Transform(new(circle.Center.X + circle.Radius * Math.Cos(i * Math.PI * 2 / curveSegments), circle.Center.Y + circle.Radius * Math.Sin(i * Math.PI * 2 / curveSegments)))).ToArray(),
+        DrillPointEntity drill => [drill.Transform.Transform(drill.Position)],
         EllipseEntity ellipse => Enumerable.Range(0, curveSegments).Select(i => ellipse.Transform.Transform(new(ellipse.Center.X + ellipse.RadiusX * Math.Cos(i * Math.PI * 2 / curveSegments), ellipse.Center.Y + ellipse.RadiusY * Math.Sin(i * Math.PI * 2 / curveSegments)))).ToArray(),
         ArcEntity arc => Enumerable.Range(0, curveSegments + 1).Select(i => arc.Transform.Transform(GeometryAlgorithms.PointOnArc(arc, arc.StartAngleDegrees + arc.SweepAngleDegrees * i / curveSegments))).ToArray(),
         VectorPathEntity path => VectorPathGeometry.Flatten(path.Figures, .02).Select(path.Transform.Transform).ToArray(),
@@ -48,6 +49,7 @@ public static class EntityGeometry
             case PolylineEntity polyline: for (var i = 0; i < polyline.Points.Count; i++) polyline.Points[i] += delta; break;
             case RectangleEntity rectangle: rectangle.Origin += delta; break;
             case CircleEntity circle: circle.Center += delta; break;
+            case DrillPointEntity drill: drill.Position += delta; break;
             case ArcEntity arc: arc.Center += delta; break;
             case EllipseEntity ellipse: ellipse.Center += delta; break;
             case VectorPathEntity path: path.Transform=Matrix2D.Then(path.Transform,Matrix2D.Translation(delta.X,delta.Y));break;
@@ -62,6 +64,7 @@ public static class EntityGeometry
         PolylineEntity polyline => CopyBase(polyline, new PolylineEntity { Points = [.. polyline.Points], IsClosed = polyline.IsClosed }),
         RectangleEntity rectangle => CopyBase(rectangle, new RectangleEntity { Origin = rectangle.Origin, Width = rectangle.Width, Height = rectangle.Height }),
         CircleEntity circle => CopyBase(circle, new CircleEntity { Center = circle.Center, Radius = circle.Radius }),
+        DrillPointEntity drill => CopyBase(drill, new DrillPointEntity { Position = drill.Position }),
         ArcEntity arc => CopyBase(arc, new ArcEntity { Center = arc.Center, Radius = arc.Radius, StartAngleDegrees = arc.StartAngleDegrees, SweepAngleDegrees = arc.SweepAngleDegrees }),
         EllipseEntity ellipse => CopyBase(ellipse, new EllipseEntity { Center = ellipse.Center, RadiusX = ellipse.RadiusX, RadiusY = ellipse.RadiusY }),
         VectorPathEntity path => CopyBase(path,new VectorPathEntity{Figures=VectorPathGeometry.Clone(path.Figures)}),
@@ -91,7 +94,7 @@ public static class EntityGeometry
 
     public static IReadOnlyList<Point2D> Centers(CadEntity entity) => entity switch
     {
-        CircleEntity circle => [circle.Transform.Transform(circle.Center)], ArcEntity arc => [arc.Transform.Transform(arc.Center)], EllipseEntity ellipse => [ellipse.Transform.Transform(ellipse.Center)],
+        CircleEntity circle => [circle.Transform.Transform(circle.Center)], DrillPointEntity drill => [drill.Transform.Transform(drill.Position)], ArcEntity arc => [arc.Transform.Transform(arc.Center)], EllipseEntity ellipse => [ellipse.Transform.Transform(ellipse.Center)],
         RectangleEntity rectangle => [rectangle.Transform.Transform(new(rectangle.Origin.X + rectangle.Width / 2, rectangle.Origin.Y + rectangle.Height / 2))], _ => []
     };
 

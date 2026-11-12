@@ -2,7 +2,13 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 using System.Globalization;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using CncCad.Cam.Toolpaths;
 using CncCad.Cam.Safety;
 using CncCad.Cam.Operations;
@@ -10,14 +16,17 @@ using CncCad.Cam.Profile;
 using CncCad.Core.Documents;
 using CncCad.Core.Entities;
 using CncCad.Core.Geometry;
+using CncCad.Core.Preview;
 using CncCad.Core.Selection;
 using CncCad.Core.Snapping;
 using CncCad.Core.Transforms;
 using CncCad.Simulation.Playback;
+using CncCad.Simulation.Stock;
+using CncCad.Rendering.Preview;
 
 namespace CncCad.Rendering.Canvas;
 
-public enum CanvasTool { Select, Line, Polyline, Rectangle, Circle, Arc, Trim }
+public enum CanvasTool { Select, Line, Polyline, Rectangle, Circle, Arc, DrillPoint, Trim }
 internal enum SelectionDragMode { None, Scale, Rotate }
 
 public sealed class CadCanvas : Control
@@ -27,6 +36,16 @@ public sealed class CadCanvas : Control
     private readonly DrawingToolSession _drawingSession = new();
     private readonly IInteractiveTrimService _trimService = new InteractiveTrimService();
     private readonly OrbitCamera _camera = new();
+    private readonly StockPreviewRenderer _stockPreviewRenderer = new();
+    private readonly DispatcherTimer _previewRefineTimer;
+    private CancellationTokenSource? _previewRenderCancellation;
+    private WriteableBitmap? _previewBitmap;
+    private string? _previewBitmapKey;
+    private string? _previewRequestedKey;
+    private bool _interactivePreview;
+    private ProjectPreviewSettings _previewSettings = ProjectPreviewSettings.LegacyDefault;
+    private string? _previewMaterialName;
+    private string? _previewMaterialCategory;
     private Point? _lastPan;
     private Point? _lastOrbit;
     private Point _cursorScreen;
@@ -53,6 +72,7 @@ public sealed class CadCanvas : Control
     public bool ShowGrid { get; set; } = true;
     public bool SnappingEnabled { get; set; } = true;
     public bool ShowToolpaths { get; set; } = true;
+    public bool ShowCutter { get; set; } = true;
     public bool ToolpathPreviewMode { get; set; }
     public bool NodeEditMode { get; set; }
     public Guid? ActiveMaterialSheetId { get; set; }
@@ -61,6 +81,7 @@ public sealed class CadCanvas : Control
     public PlaybackFrame PlaybackFrame { get; set; } = PlaybackFrame.Empty;
     public IReadOnlyList<FixtureDefinition> Fixtures { get; set; } = [];
     public IReadOnlyList<SafetyFinding> SafetyFindings { get; set; } = [];
+    public StockHeightfield? StockSimulation { get; set; }
     public Action<CadEntity>? EntityCreated { get; set; }
     public Action<Vector2D>? SelectionMoved { get; set; }
     public Action<Matrix2D,string>? SelectionTransformed { get; set; }
@@ -76,6 +97,28 @@ public sealed class CadCanvas : Control
     {
         ClipToBounds = true; Focusable = true;
         PointerPressed += OnPointerPressed; PointerMoved += OnPointerMoved; PointerReleased += OnPointerReleased; PointerWheelChanged += OnWheel;
+        _previewRefineTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _previewRefineTimer.Tick += (_, _) =>
+        {
+            _previewRefineTimer.Stop();
+            if (!_interactivePreview) return;
+            _interactivePreview = false;
+            InvalidatePreviewRender();
+        };
+    }
+
+    public ProjectPreviewSettings PreviewSettings => _previewSettings;
+    public void SetPreviewAppearance(ProjectPreviewSettings settings, string? materialName = null, string? materialCategory = null)
+    {
+        settings = settings.Normalize();
+        if (_previewSettings == settings && _previewMaterialName == materialName && _previewMaterialCategory == materialCategory) return;
+        _previewSettings = settings; _previewMaterialName = materialName; _previewMaterialCategory = materialCategory;
+        InvalidatePreviewRender();
+    }
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        _previewRefineTimer.Stop();_previewRenderCancellation?.Cancel();_previewRenderCancellation?.Dispose();_previewRenderCancellation=null;_previewBitmap?.Dispose();_previewBitmap=null;
+        base.OnDetachedFromVisualTree(e);
     }
 
     public void SetTool(CanvasTool tool) { ActiveTool = tool; _trimCandidate=null;_drawingSession.SetTool(tool); Cursor=new Cursor(tool==CanvasTool.Trim?StandardCursorType.Cross:StandardCursorType.Arrow);ReportInteraction(); InvalidateVisual(); }
@@ -87,7 +130,7 @@ public sealed class CadCanvas : Control
     public void ZoomToFit() { if (Bounds.Width > 0) _viewport.Fit(Document.Job.WidthMm, Document.Job.HeightMm, Bounds.Width, Bounds.Height); InvalidateVisual(); }
     public CameraPreset CameraPreset => _camera.Preset;
     public void SetCameraPreset(CameraPreset preset) { _camera.SetPreset(preset); Fit3D(); }
-    public void Fit3D() { if (Bounds.Width>0) { _camera.Fit(Document.Job.WidthMm,Document.Job.HeightMm,Document.Job.ThicknessMm,Document.Job.SafeZMm,Bounds.Width,Bounds.Height); _didInitial3DFit=true; } InvalidateVisual(); }
+    public void Fit3D() { if (Bounds.Width>0) { _camera.Fit(Document.Job.WidthMm,Document.Job.HeightMm,Document.Job.ThicknessMm,Document.Job.SafeZMm,Bounds.Width,Bounds.Height); _didInitial3DFit=true; } InvalidatePreviewRender(); }
     public void Enter3DPreview() { if (!_didInitial3DFit) Fit3D(); }
     public void Reset3DView() { _camera.SetPreset(CameraPreset.Isometric); _didInitial3DFit=false; if (ToolpathPreviewMode) Fit3D(); }
     public void ZoomToSelection()
@@ -117,6 +160,14 @@ public sealed class CadCanvas : Control
         if (_moveStart is null && _selectionStart is { } selectionStart && _selectionEnd is { } selectionEnd) DrawSelectionArea(context, selectionStart, selectionEnd);
         DrawSnap(context);
         DrawMeasurementHud(context, CurrentMeasurement());
+        DrawRulers(context);
+    }
+    private void DrawRulers(DrawingContext context)
+    {
+        const double size=22;var background=new SolidColorBrush(Color.FromArgb(235,24,31,36));var pen=new Pen(new SolidColorBrush(Color.Parse("#60717C")),1);var textBrush=new SolidColorBrush(Color.Parse("#AAB8C1"));context.FillRectangle(background,new Rect(0,0,Bounds.Width,size));context.FillRectangle(background,new Rect(0,0,size,Bounds.Height));
+        var step=10d;while(step*_viewport.Zoom<55)step*=5;var min=Doc(new Point(size,Bounds.Height-size));var max=Doc(new Point(Bounds.Width, size));var typeface=new Typeface("Inter");
+        for(var x=Math.Floor(min.X/step)*step;x<=max.X;x+=step){var screen=Screen(new Point2D(x,0)).X;if(screen<size)continue;context.DrawLine(pen,new(screen,size-7),new(screen,size));context.DrawText(new FormattedText(x.ToString("0.##",CultureInfo.InvariantCulture),CultureInfo.InvariantCulture,FlowDirection.LeftToRight,typeface,9,textBrush),new Point(screen+2,3));}
+        for(var y=Math.Floor(min.Y/step)*step;y<=max.Y;y+=step){var screen=Screen(new Point2D(0,y)).Y;if(screen<size)continue;context.DrawLine(pen,new(size-7,screen),new(size,screen));context.DrawText(new FormattedText(y.ToString("0.##",CultureInfo.InvariantCulture),CultureInfo.InvariantCulture,FlowDirection.LeftToRight,typeface,9,textBrush),new Point(2,screen-11));}
     }
     private void DrawTrimPreview(DrawingContext context)
     {
@@ -125,11 +176,79 @@ public sealed class CadCanvas : Control
     }
     private void Draw3DPreview(DrawingContext context)
     {
-        DrawMaterialSlab(context); var geometryPen=new Pen(new SolidColorBrush(Color.FromArgb(120,101,201,255)),1.2);
+        if(!DrawRenderedStock(context)){DrawMaterialSlab(context);DrawStockRemoval(context);} DrawDatum3D(context);var geometryPen=new Pen(new SolidColorBrush(Color.FromArgb(120,101,201,255)),1.2);
         DrawFixtures(context);
         foreach(var entity in Document.Entities.Where(IsEntityVisible)) DrawEntity3D(context,entity,geometryPen);
         if(ShowToolpaths && PlaybackFrame.State!=PlaybackState.Empty) DrawPlayback(context,PlaybackFrame); else if(ShowToolpaths && Toolpaths is not null) DrawToolpaths(context,Toolpaths);
         foreach(var finding in SafetyFindings.Where(x=>x.Position is not null)){var p=P(finding.Position!.Value,finding.Z??0);IBrush color=finding.Severity==SafetySeverity.Error?Brushes.Red:new SolidColorBrush(Color.Parse("#E8B85C"));context.DrawEllipse(null,new Pen(color,2.5),p,7,7);context.DrawLine(new Pen(color,2),new(p.X-10,p.Y),new(p.X+10,p.Y));}
+    }
+    private bool DrawRenderedStock(DrawingContext context)
+    {
+        RequestPreviewRender();
+        if (_previewBitmap is null) return false;
+        context.DrawImage(_previewBitmap, new Rect(0, 0, Bounds.Width, Bounds.Height));
+        return true;
+    }
+    private void RequestPreviewRender()
+    {
+        if (Bounds.Width < 2 || Bounds.Height < 2 || Document.Job.WidthMm <= 0 || Document.Job.HeightMm <= 0 || Document.Job.ThicknessMm <= 0) return;
+        var camera = PreviewCameraState.From(_camera);
+        var field = StockSimulation;
+        var quality = _interactivePreview ? "interactive" : "refined";
+        var sourceIdentity=field is null?RuntimeHelpers.GetHashCode(Document):RuntimeHelpers.GetHashCode(field);
+        var key = string.Join("|", sourceIdentity, Document.Job.WidthMm.ToString("R",CultureInfo.InvariantCulture), Document.Job.HeightMm.ToString("R",CultureInfo.InvariantCulture), Document.Job.ThicknessMm.ToString("R",CultureInfo.InvariantCulture), Bounds.Width.ToString("0.0",CultureInfo.InvariantCulture), Bounds.Height.ToString("0.0",CultureInfo.InvariantCulture), camera.Yaw.ToString("R",CultureInfo.InvariantCulture), camera.Pitch.ToString("R",CultureInfo.InvariantCulture), camera.Zoom.ToString("R",CultureInfo.InvariantCulture), camera.PanX.ToString("R",CultureInfo.InvariantCulture), camera.PanY.ToString("R",CultureInfo.InvariantCulture), _previewSettings.Style, _previewSettings.MaterialPreset, _previewSettings.GrainDirection, _previewSettings.TintHex, _previewMaterialName, _previewMaterialCategory, quality);
+        if (_previewBitmapKey == key || _previewRequestedKey == key) return;
+        _previewRenderCancellation?.Cancel(); _previewRenderCancellation?.Dispose();
+        var cancellation = _previewRenderCancellation = new CancellationTokenSource();
+        _previewRequestedKey = key;
+        var viewportWidth = Bounds.Width; var viewportHeight = Bounds.Height;
+        var scale = _interactivePreview ? .55 : 1;
+        var targetWidth = Math.Max(32, (int)Math.Round(Math.Min(viewportWidth * scale, _interactivePreview ? 900 : 1600)));
+        var targetHeight = Math.Max(32, (int)Math.Round(Math.Min(viewportHeight * scale, _interactivePreview ? 700 : 1200)));
+        var segmentLimit = _interactivePreview ? 160 : 420;
+        var settings = _previewSettings; var materialName = _previewMaterialName; var materialCategory = _previewMaterialCategory;
+        var widthMm = Document.Job.WidthMm; var heightMm = Document.Job.HeightMm; var thicknessMm = Document.Job.ThicknessMm;
+        _ = Task.Run(() =>
+        {
+            var mesh = StockSurfaceMeshBuilder.Build(field, widthMm, heightMm, thicknessMm, segmentLimit);
+            return _stockPreviewRenderer.Render(mesh, camera, settings, materialName, materialCategory, targetWidth, targetHeight, viewportWidth, viewportHeight, cancellation.Token);
+        }, cancellation.Token).ContinueWith(task =>
+        {
+            if (task.IsCanceled || task.IsFaulted || cancellation.IsCancellationRequested)
+            {
+                Dispatcher.UIThread.Post(()=>{if(_previewRequestedKey==key)_previewRequestedKey=null;},DispatcherPriority.Background);return;
+            }
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (cancellation.IsCancellationRequested || _previewRequestedKey != key) return;
+                var bitmap = CreateBitmap(task.Result);
+                var previous = _previewBitmap; _previewBitmap = bitmap; _previewBitmapKey = key; _previewRequestedKey = null;
+                previous?.Dispose(); InvalidateVisual();
+            }, DispatcherPriority.Render);
+        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
+    private static WriteableBitmap CreateBitmap(PreviewRaster raster)
+    {
+        var bitmap = new WriteableBitmap(new PixelSize(raster.Width,raster.Height),new Vector(96,96),PixelFormat.Bgra8888,AlphaFormat.Premul);
+        using var frame = bitmap.Lock();
+        var sourceStride = raster.Width * 4;
+        for (var row = 0; row < raster.Height; row++) Marshal.Copy(raster.BgraPixels,row*sourceStride,IntPtr.Add(frame.Address,row*frame.RowBytes),sourceStride);
+        return bitmap;
+    }
+    private void InvalidatePreviewRender()
+    {
+        _previewRequestedKey=null;_previewRenderCancellation?.Cancel();InvalidateVisual();
+    }
+    private void BeginInteractivePreview()
+    {
+        if(!_interactivePreview){_interactivePreview=true;InvalidatePreviewRender();}
+        _previewRefineTimer.Stop();_previewRefineTimer.Start();
+    }
+    private void DrawStockRemoval(DrawingContext context)
+    {
+        if(StockSimulation is not{} field)return;var stride=Math.Max(1,Math.Max(field.Columns,field.Rows)/180);var pen=new Pen(new SolidColorBrush(Color.FromArgb(155,202,169,113)),.8);
+        for(var row=0;row<field.Rows;row+=stride)for(var column=stride;column<field.Columns;column+=stride){var aColumn=column-stride;var a=new Point2D((aColumn+.5)*field.CellSizeMm,(row+.5)*field.CellSizeMm);var b=new Point2D((column+.5)*field.CellSizeMm,(row+.5)*field.CellSizeMm);context.DrawLine(pen,P(a,field[aColumn,row]),P(b,field[column,row]));}
+        for(var column=0;column<field.Columns;column+=stride)for(var row=stride;row<field.Rows;row+=stride){var aRow=row-stride;var a=new Point2D((column+.5)*field.CellSizeMm,(aRow+.5)*field.CellSizeMm);var b=new Point2D((column+.5)*field.CellSizeMm,(row+.5)*field.CellSizeMm);context.DrawLine(pen,P(a,field[column,aRow]),P(b,field[column,row]));}
     }
     private void DrawFixtures(DrawingContext context)
     {
@@ -140,8 +259,8 @@ public sealed class CadCanvas : Control
         var w=Document.Job.WidthMm; var h=Document.Job.HeightMm; var z=-Document.Job.ThicknessMm; var top=new[]{P(0,0,0),P(w,0,0),P(w,h,0),P(0,h,0)}; var bottom=new[]{P(0,0,z),P(w,0,z),P(w,h,z),P(0,h,z)};
         FillFace(context,new[]{top[0],top[1],bottom[1],bottom[0]},"#303A40"); FillFace(context,new[]{top[1],top[2],bottom[2],bottom[1]},"#283239"); FillFace(context,top,"#465159");
         var edge=new Pen(new SolidColorBrush(Color.Parse("#91A1AD")),1.2); for(var i=0;i<4;i++){context.DrawLine(edge,top[i],top[(i+1)%4]);context.DrawLine(edge,bottom[i],bottom[(i+1)%4]);context.DrawLine(edge,top[i],bottom[i]);}
-        var datum=MachineCoordinateTransform.OriginInDocument(Document.Job);var o=P(datum,0); context.DrawLine(new Pen(Brushes.Red,2),o,P(datum.X+Math.Min(w,40),datum.Y,0));context.DrawLine(new Pen(new SolidColorBrush(Color.Parse("#65D18A")),2),o,P(datum.X,datum.Y+Math.Min(h,40),0));context.DrawLine(new Pen(new SolidColorBrush(Color.Parse("#65C9FF")),2),o,P(datum,Math.Min(40,Document.Job.SafeZMm+20)));
     }
+    private void DrawDatum3D(DrawingContext context){var w=Document.Job.WidthMm;var h=Document.Job.HeightMm;var datum=MachineCoordinateTransform.OriginInDocument(Document.Job);var o=P(datum,0); context.DrawLine(new Pen(Brushes.Red,2),o,P(datum.X+Math.Min(w,40),datum.Y,0));context.DrawLine(new Pen(new SolidColorBrush(Color.Parse("#65D18A")),2),o,P(datum.X,datum.Y+Math.Min(h,40),0));context.DrawLine(new Pen(new SolidColorBrush(Color.Parse("#65C9FF")),2),o,P(datum,Math.Min(40,Document.Job.SafeZMm+20)));}
     private void FillFace(DrawingContext context,Point[] points,string color){var g=new StreamGeometry();using(var s=g.Open()){s.BeginFigure(points[0],true);foreach(var p in points.Skip(1))s.LineTo(p);s.EndFigure(true);}context.DrawGeometry(new SolidColorBrush(Color.Parse(color)),null,g);}
     private void DrawEntity3D(DrawingContext context,CadEntity entity,Pen pen)
     {
@@ -164,6 +283,7 @@ public sealed class CadCanvas : Control
     {
         var layerColor=entity.StrokeColor??Document.Layers.FirstOrDefault(x=>x.Id==entity.LayerId)?.Color;var color = preview ? Colors.White : Color.TryParse(layerColor,out var parsed)?parsed:Color.Parse("#65C9FF"); color = Color.FromArgb((byte)(255 * opacity), color.R, color.G, color.B);
         var pen = overridePen??new Pen(new SolidColorBrush(color), preview ? 1 : 1.5, dashStyle: preview ? DashStyle.Dash : null);
+        if(entity is DrillPointEntity drill){var p=Screen(drill.Transform.Transform(drill.Position));context.DrawEllipse(null,pen,p,5,5);context.DrawLine(pen,new(p.X-7,p.Y),new(p.X+7,p.Y));context.DrawLine(pen,new(p.X,p.Y-7),new(p.X,p.Y+7));return;}
         if(entity is VectorPathEntity path){foreach(var figure in path.Figures){var figurePoints=VectorPathGeometry.Flatten([figure],.02).Select(path.Transform.Transform).ToArray();for(var i=1;i<figurePoints.Length;i++)context.DrawLine(pen,Screen(figurePoints[i-1]),Screen(figurePoints[i]));}return;}
         if(entity is TextEntity text){foreach(var outline in text.Outlines){var outlinePoints=VectorPathGeometry.Flatten([outline],.02).Select(text.Transform.Transform).ToArray();for(var i=1;i<outlinePoints.Length;i++)context.DrawLine(pen,Screen(outlinePoints[i-1]),Screen(outlinePoints[i]));}return;}
         var points=EntityGeometry.WorldPoints(entity);for(var i=1;i<points.Count;i++)context.DrawLine(pen,Screen(points[i-1]),Screen(points[i]));
@@ -235,7 +355,7 @@ public sealed class CadCanvas : Control
             var segment=frame.Segments[i]; var isPlunge=segment.Start.DistanceTo(segment.End)<1e-9&&Math.Abs(segment.EndZ-segment.StartZ)>1e-9;
             DrawPlaybackSegment(context, segment, completion, completion > 0 ? (segment.Kind == PlaybackMoveKind.Rapid ? rapid : isPlunge ? plunge : cut) : future);
         }
-        var marker = P(frame.Position,frame.Z); var radius = Math.Max(5, frame.ToolDiameterMm * _camera.Zoom / 2); var markerPen = new Pen(new SolidColorBrush(Color.Parse("#72E6A8")), 2);
+        if(!ShowCutter)return;var marker = P(frame.Position,frame.Z); var radius = Math.Max(5, frame.ToolDiameterMm * _camera.Zoom / 2); var markerPen = new Pen(new SolidColorBrush(Color.Parse("#72E6A8")), 2);
         context.DrawEllipse(new SolidColorBrush(Color.FromArgb(55, 114, 230, 168)), markerPen, marker, radius, radius); context.DrawLine(markerPen, new(marker.X-radius-3,marker.Y), new(marker.X+radius+3,marker.Y)); context.DrawLine(markerPen, new(marker.X,marker.Y-radius-3),new(marker.X,marker.Y+radius+3));
         context.DrawLine(markerPen,marker,P(frame.Position,Math.Max(frame.Z,Document.Job.SafeZMm)));
         if(frame.ActiveSegmentIndex>=0&&frame.ActiveSegmentIndex<frame.Segments.Count){var active=frame.Segments[frame.ActiveSegmentIndex];var aheadFraction=Math.Min(1,frame.ActiveSegmentProgress+.04);var ahead=P(active.PointAt(aheadFraction),active.ZAt(aheadFraction));context.DrawLine(new Pen(new SolidColorBrush(Color.Parse("#F7F1A1")),2.5),marker,ahead);}
@@ -263,7 +383,7 @@ public sealed class CadCanvas : Control
     private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
     {
         Focus(); var screen = e.GetPosition(this); _cursorScreen = screen;
-        if(ToolpathPreviewMode){if(e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)_lastOrbit=screen;else if(e.GetCurrentPoint(this).Properties.IsMiddleButtonPressed)_lastPan=screen;e.Pointer.Capture(this);return;}
+        if(ToolpathPreviewMode){BeginInteractivePreview();if(e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)_lastOrbit=screen;else if(e.GetCurrentPoint(this).Properties.IsMiddleButtonPressed)_lastPan=screen;e.Pointer.Capture(this);return;}
         var point = Snapped(Doc(screen));
         if(TabEditMode&&e.GetCurrentPoint(this).Properties.IsLeftButtonPressed){TabPlacementRequested?.Invoke(point);InvalidateVisual();return;}
         if(ActiveTool==CanvasTool.Trim&&e.GetCurrentPoint(this).Properties.IsLeftButtonPressed){if(_trimCandidate is{Success:true} candidate){TrimRequested?.Invoke(candidate);_trimCandidate=null;TrimStatusChanged?.Invoke("Vector trimmed · scissors remains active");}else TrimStatusChanged?.Invoke(_trimCandidate?.Error??"Hover a vector portion bounded by crossings.");InvalidateVisual();return;}
@@ -283,7 +403,7 @@ public sealed class CadCanvas : Control
     private void OnPointerMoved(object? sender, PointerEventArgs e)
     {
         var screen = e.GetPosition(this); _cursorScreen = screen;
-        if(ToolpathPreviewMode){if(_lastOrbit is{} orbit){_camera.Orbit((screen.X-orbit.X)*.008,(orbit.Y-screen.Y)*.008);_lastOrbit=screen;}if(_lastPan is{} pan){_camera.Pan(screen.X-pan.X,screen.Y-pan.Y);_lastPan=screen;}InvalidateVisual();return;}
+        if(ToolpathPreviewMode){if(_lastOrbit is{} orbit){BeginInteractivePreview();_camera.Orbit((screen.X-orbit.X)*.008,(orbit.Y-screen.Y)*.008);_lastOrbit=screen;}if(_lastPan is{} pan){BeginInteractivePreview();_camera.Pan(screen.X-pan.X,screen.Y-pan.Y);_lastPan=screen;}InvalidateVisual();return;}
         if(ActiveTool==CanvasTool.Trim){_cursorDocument=Doc(screen);var hits=EntityHitTester.HitTestAll(Document.Entities.Where(IsEditable),_cursorDocument.Value,8/_viewport.Zoom);var target=hits.Select((entity,index)=>(Entity:entity,Index:index,Distance:DistanceToEntity(_cursorDocument.Value,entity))).OrderBy(x=>x.Distance).ThenBy(x=>x.Index).FirstOrDefault().Entity;_trimCandidate=target is null?null:_trimService.FindCandidate(target,Document.Entities.Where(IsEditable),_cursorDocument.Value,8/_viewport.Zoom);TrimStatusChanged?.Invoke(_trimCandidate is{Success:true}?"Click the red segment to trim it":_trimCandidate?.Error??"Hover the portion to remove");PointerStatusChanged?.Invoke(_cursorDocument.Value,_viewport.Zoom);InvalidateVisual();return;}
         if(_selectionDragMode!=SelectionDragMode.None){var current=Doc(screen);if(_selectionDragMode==SelectionDragMode.Rotate){var a=Math.Atan2(_transformStart.Y-_transformPivot.Y,_transformStart.X-_transformPivot.X);var b=Math.Atan2(current.Y-_transformPivot.Y,current.X-_transformPivot.X);_transformPreview=Matrix2D.Around(_transformPivot,Matrix2D.Rotation((b-a)*180/Math.PI));}else{var start=_transformStart-_transformPivot;var now=current-_transformPivot;var sx=Math.Abs(start.X)<1e-9?1:now.X/start.X;var sy=Math.Abs(start.Y)<1e-9?1:now.Y/start.Y;if(_uniformScale){var factor=Math.Abs(sx)>=Math.Abs(sy)?sx:sy;sx=sy=factor;}if(Math.Abs(sx)>1e-4&&Math.Abs(sy)>1e-4)_transformPreview=Matrix2D.Around(_transformPivot,Matrix2D.Scale(sx,sy));}PointerStatusChanged?.Invoke(current,_viewport.Zoom);InvalidateVisual();return;}
         _cursorDocument = Snapped(Doc(screen)); _drawingSession.PointerMoved(_cursorDocument.Value); PointerStatusChanged?.Invoke(_cursorDocument.Value, _viewport.Zoom);
@@ -293,7 +413,7 @@ public sealed class CadCanvas : Control
     }
     private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
-        if(ToolpathPreviewMode){_lastOrbit=null;_lastPan=null;e.Pointer.Capture(null);return;}
+        if(ToolpathPreviewMode){_lastOrbit=null;_lastPan=null;_previewRefineTimer.Stop();_previewRefineTimer.Start();e.Pointer.Capture(null);return;}
         if(_selectionDragMode!=SelectionDragMode.None){var description=_selectionDragMode==SelectionDragMode.Rotate?"Selection rotated":"Selection resized";SelectionTransformed?.Invoke(_transformPreview,description);_selectionDragMode=SelectionDragMode.None;_transformPreview=Matrix2D.Identity;e.Pointer.Capture(null);ReportInteraction();InvalidateVisual();return;}
         if(NodeEditMode&&_nodeEntity is not null&&_cursorDocument is{} nodePoint){NodeMoved?.Invoke(_nodeEntity,_nodeIndex,nodePoint);_nodeEntity=null;_nodeIndex=-1;e.Pointer.Capture(null);InvalidateVisual();return;}
         if (ActiveTool != CanvasTool.Select && _cursorDocument is { } drawingEnd) { var entity = _drawingSession.PointerReleased(drawingEnd, Document.ActiveLayerId); if (entity is not null) EntityCreated?.Invoke(entity); }
@@ -321,6 +441,6 @@ public sealed class CadCanvas : Control
     private static double DistanceToEntity(Point2D point,CadEntity entity){var paths=entity is VectorPathEntity vector?vector.Figures.Select(f=>(IReadOnlyList<Point2D>)VectorPathGeometry.Flatten(VectorPathGeometry.Transform([f],vector.Transform),.01)).ToArray():[(IReadOnlyList<Point2D>)EntityGeometry.WorldPoints(entity)];var best=double.MaxValue;foreach(var path in paths)for(var i=1;i<path.Count;i++){var d=path[i]-path[i-1];var length=d.X*d.X+d.Y*d.Y;var t=length<1e-12?0:Math.Clamp(((point.X-path[i-1].X)*d.X+(point.Y-path[i-1].Y)*d.Y)/length,0,1);best=Math.Min(best,point.DistanceTo(new(path[i-1].X+d.X*t,path[i-1].Y+d.Y*t)));}return best;}
     private void OnWheel(object? sender, PointerWheelEventArgs e)
     {
-        var screen=e.GetPosition(this);if(ToolpathPreviewMode){_camera.ZoomBy(e.Delta.Y>0?1.15:1/1.15);InvalidateVisual();return;}_cursorScreen=screen;_viewport.SetZoom(_viewport.Zoom*(e.Delta.Y>0?1.15:1/1.15),new(screen.X,screen.Y),Bounds.Height);_cursorDocument=Snapped(Doc(screen));PointerStatusChanged?.Invoke(_cursorDocument.Value,_viewport.Zoom);ReportInteraction();InvalidateVisual();
+        var screen=e.GetPosition(this);if(ToolpathPreviewMode){BeginInteractivePreview();_camera.ZoomBy(e.Delta.Y>0?1.15:1/1.15);InvalidateVisual();return;}_cursorScreen=screen;_viewport.SetZoom(_viewport.Zoom*(e.Delta.Y>0?1.15:1/1.15),new(screen.X,screen.Y),Bounds.Height);_cursorDocument=Snapped(Doc(screen));PointerStatusChanged?.Invoke(_cursorDocument.Value,_viewport.Zoom);ReportInteraction();InvalidateVisual();
     }
 }

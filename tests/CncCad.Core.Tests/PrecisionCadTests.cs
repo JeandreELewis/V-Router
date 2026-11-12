@@ -48,4 +48,9 @@ public sealed class PrecisionCadTests
     {
         var format=new GCodeExportFormat("Test",extension);Assert.Equal(expected,format.NormalizePath(input));
     }
+    [Theory]
+    [InlineData("Cabinet:Side/One", "Cabinet_Side_One")]
+    [InlineData("...", "cnc-program")]
+    [InlineData("", "cnc-program")]
+    public void Export_File_Stem_Is_Portable(string input,string expected)=>Assert.Equal(expected,GCodeExportFormat.SafeFileStem(input));
 }

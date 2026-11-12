@@ -3,7 +3,7 @@ namespace CncCad.PostProcessors.Models;
 public sealed class MachineProfile
 {
     public string Name { get; set; } = "UCCNC CNC Router";
-    public string PostProcessor { get; set; } = "UCCNC";
+    public string PostProcessor { get; set; } = "uccnc-mm";
     public double MaximumXmm { get; set; } = 1200;
     public double MaximumYmm { get; set; } = 1200;
     public double MaximumZmm { get; set; } = 150;

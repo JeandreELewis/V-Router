@@ -9,6 +9,7 @@ public sealed record ArcMove(Point2D End, Point2D Center, double Z, double FeedR
 public sealed record ToolChange(int? ToolNumber, string ToolName) : ToolpathMove;
 public sealed record SpindleStart(int Rpm) : ToolpathMove;
 public sealed record SpindleStop : ToolpathMove;
+public sealed record DwellMove(double Seconds) : ToolpathMove;
 
 public sealed class ToolpathOperation
 {

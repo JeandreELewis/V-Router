@@ -8,6 +8,8 @@ public sealed class ToolLibraryDbContext(DbContextOptions<ToolLibraryDbContext> 
 {
     public DbSet<CncTool> Tools => Set<CncTool>();
     public DbSet<MachineProfileDefinition> Machines => Set<MachineProfileDefinition>();
+    public DbSet<MaterialDefinition> Materials => Set<MaterialDefinition>();
+    public DbSet<ToolCuttingPreset> ToolCuttingPresets => Set<ToolCuttingPreset>();
 }
 
 public sealed class ToolLibraryContextFactory(DbContextOptions<ToolLibraryDbContext> options) : IDbContextFactory<ToolLibraryDbContext>
@@ -27,6 +29,34 @@ public interface IMachineProfileRepository
     Task<IReadOnlyList<MachineProfileDefinition>> GetAllAsync(CancellationToken cancellationToken = default);
     Task SaveAsync(MachineProfileDefinition machine, CancellationToken cancellationToken = default);
     Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
+}
+
+public interface IMaterialLibrary
+{
+    Task<IReadOnlyList<MaterialDefinition>> GetAllAsync(CancellationToken cancellationToken = default);
+    Task SaveAsync(MaterialDefinition material, CancellationToken cancellationToken = default);
+    Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
+}
+
+public interface IToolCuttingPresetRepository
+{
+    Task<IReadOnlyList<ToolCuttingPreset>> GetAllAsync(CancellationToken cancellationToken = default);
+    Task SaveAsync(ToolCuttingPreset preset, CancellationToken cancellationToken = default);
+    Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
+}
+
+public sealed class SqliteMaterialLibrary(IDbContextFactory<ToolLibraryDbContext> factory):IMaterialLibrary
+{
+    public async Task<IReadOnlyList<MaterialDefinition>> GetAllAsync(CancellationToken cancellationToken=default){await using var db=await factory.CreateDbContextAsync(cancellationToken);return await db.Materials.AsNoTracking().OrderBy(x=>x.Category).ThenBy(x=>x.Name).ToListAsync(cancellationToken);}
+    public async Task SaveAsync(MaterialDefinition material,CancellationToken cancellationToken=default){if(string.IsNullOrWhiteSpace(material.Name))throw new ArgumentException("Material name is required.");await using var db=await factory.CreateDbContextAsync(cancellationToken);db.Update(material);await db.SaveChangesAsync(cancellationToken);}
+    public async Task DeleteAsync(Guid id,CancellationToken cancellationToken=default){await using var db=await factory.CreateDbContextAsync(cancellationToken);await db.Materials.Where(x=>x.Id==id).ExecuteDeleteAsync(cancellationToken);}
+}
+
+public sealed class SqliteToolCuttingPresetRepository(IDbContextFactory<ToolLibraryDbContext> factory):IToolCuttingPresetRepository
+{
+    public async Task<IReadOnlyList<ToolCuttingPreset>> GetAllAsync(CancellationToken cancellationToken=default){await using var db=await factory.CreateDbContextAsync(cancellationToken);return await db.ToolCuttingPresets.AsNoTracking().ToListAsync(cancellationToken);}
+    public async Task SaveAsync(ToolCuttingPreset preset,CancellationToken cancellationToken=default){var errors=preset.Validate();if(errors.Count>0)throw new ArgumentException(string.Join(" ",errors));await using var db=await factory.CreateDbContextAsync(cancellationToken);db.Update(preset);await db.SaveChangesAsync(cancellationToken);}
+    public async Task DeleteAsync(Guid id,CancellationToken cancellationToken=default){await using var db=await factory.CreateDbContextAsync(cancellationToken);await db.ToolCuttingPresets.Where(x=>x.Id==id).ExecuteDeleteAsync(cancellationToken);}
 }
 
 public sealed class SqliteMachineProfileRepository(IDbContextFactory<ToolLibraryDbContext> factory) : IMachineProfileRepository
@@ -75,6 +105,7 @@ public static class ToolLibraryInitializer
         await using var db = await factory.CreateDbContextAsync();
         await db.Database.EnsureCreatedAsync();
         try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE Tools ADD COLUMN StickOutMm REAL NULL;"); } catch (Microsoft.Data.Sqlite.SqliteException exception) when (exception.SqliteErrorCode == 1 && exception.Message.Contains("duplicate column", StringComparison.OrdinalIgnoreCase)) { }
+        try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE Machines ADD COLUMN PostProcessorId TEXT NOT NULL DEFAULT 'uccnc-mm';"); } catch (Microsoft.Data.Sqlite.SqliteException exception) when (exception.SqliteErrorCode == 1 && exception.Message.Contains("duplicate column", StringComparison.OrdinalIgnoreCase)) { }
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS Machines (
               Id TEXT NOT NULL PRIMARY KEY, Name TEXT NOT NULL, MinimumXmm REAL NOT NULL, MaximumXmm REAL NOT NULL,
@@ -82,6 +113,16 @@ public static class ToolLibraryInitializer
               RapidRateMmPerMin REAL NOT NULL, MaximumSpindleRpm INTEGER NOT NULL, DefaultClearanceMm REAL NOT NULL,
               HolderDiameterMm REAL NOT NULL, HolderLengthMm REAL NOT NULL, ToolChangeXmm REAL NOT NULL, ToolChangeYmm REAL NOT NULL,
               ParkXmm REAL NOT NULL, ParkYmm REAL NOT NULL, AllowedSpoilboardDepthMm REAL NOT NULL
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TABLE IF NOT EXISTS Materials (
+              Id TEXT NOT NULL PRIMARY KEY, Name TEXT NOT NULL, Category TEXT NOT NULL, Notes TEXT NULL
+            );
+            CREATE TABLE IF NOT EXISTS ToolCuttingPresets (
+              Id TEXT NOT NULL PRIMARY KEY, ToolId TEXT NOT NULL, MachineId TEXT NOT NULL, MaterialId TEXT NOT NULL,
+              FeedRateMmPerMin REAL NOT NULL, PlungeRateMmPerMin REAL NOT NULL, SpindleRpm INTEGER NOT NULL,
+              PassDepthMm REAL NOT NULL, StepOverPercent REAL NOT NULL
             );
             """);
         if (!await db.Tools.AnyAsync()) db.Tools.AddRange(SampleTools());
@@ -93,6 +134,10 @@ public static class ToolLibraryInitializer
             }
         }
         if (!await db.Machines.AnyAsync()) db.Machines.Add(new MachineProfileDefinition { Name = "1200 × 1200 CNC Router", ParkXmm = 0, ParkYmm = 0 });
+        if (!await db.Materials.AnyAsync()) db.Materials.AddRange(
+            new MaterialDefinition{Name="MDF",Category="Wood composite"},
+            new MaterialDefinition{Name="Plywood",Category="Wood composite"},
+            new MaterialDefinition{Name="Hardwood",Category="Timber"});
         await db.SaveChangesAsync();
     }
     private static IEnumerable<CncTool> SampleTools() =>

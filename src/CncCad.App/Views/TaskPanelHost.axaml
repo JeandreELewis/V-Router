@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="CncCad.App.Views.TaskPanelHost"
+             x:Name="Host">
+  <Grid RowDefinitions="Auto,*,Auto" Background="#1B2227">
+    <Border Background="#222B31" BorderBrush="#34414A" BorderThickness="0,0,0,1" Padding="8,6">
+      <ContentPresenter Content="{Binding HeaderContent, ElementName=Host}"/>
+    </Border>
+    <ContentPresenter Grid.Row="1" Content="{Binding Body, ElementName=Host}"/>
+    <Border Grid.Row="2" Background="#20292F" BorderBrush="#34414A" BorderThickness="0,1,0,0" Padding="8,6">
+      <ContentPresenter Content="{Binding Footer, ElementName=Host}"/>
+    </Border>
+  </Grid>
+</UserControl>

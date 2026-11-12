@@ -26,6 +26,21 @@ public sealed class OrbitCameraTests
         var rightOrigin = camera.Project(new(0, 0, 0), 800, 600);
         var alongRightY = camera.Project(new(0, 10, 0), 800, 600);
         Assert.True(alongRightY.X < rightOrigin.X);
+
+        camera.SetPreset(CameraPreset.Left);
+        var leftOrigin = camera.Project(new(0, 0, 0), 800, 600);
+        var alongLeftY = camera.Project(new(0, 10, 0), 800, 600);
+        Assert.True(alongLeftY.X > leftOrigin.X);
+
+        camera.SetPreset(CameraPreset.Back);
+        var backOrigin = camera.Project(new(0, 0, 0), 800, 600);
+        var alongBackX = camera.Project(new(10, 0, 0), 800, 600);
+        Assert.True(alongBackX.X < backOrigin.X);
+
+        camera.SetPreset(CameraPreset.Bottom);
+        var bottomOrigin = camera.Project(new(0, 0, 0), 800, 600);
+        var alongBottomY = camera.Project(new(0, 10, 0), 800, 600);
+        Assert.True(alongBottomY.Y > bottomOrigin.Y);
     }
 
     [Fact]

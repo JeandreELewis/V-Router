@@ -25,6 +25,7 @@ public sealed class MachineProfileDefinition
     public double ParkXmm { get; set; }
     public double ParkYmm { get; set; }
     public double AllowedSpoilboardDepthMm { get; set; } = 0.5;
+    public string PostProcessorId { get; set; } = "uccnc-mm";
 
     public MachineSnapshot Snapshot() => new()
     {
@@ -33,7 +34,7 @@ public sealed class MachineProfileDefinition
         RapidRateMmPerMin = RapidRateMmPerMin, MaximumSpindleRpm = MaximumSpindleRpm,
         DefaultClearanceMm = DefaultClearanceMm, HolderDiameterMm = HolderDiameterMm, HolderLengthMm = HolderLengthMm,
         ToolChangeXmm = ToolChangeXmm, ToolChangeYmm = ToolChangeYmm, ParkXmm = ParkXmm, ParkYmm = ParkYmm,
-        AllowedSpoilboardDepthMm = AllowedSpoilboardDepthMm
+        AllowedSpoilboardDepthMm = AllowedSpoilboardDepthMm, PostProcessorId = PostProcessorId
     };
 }
 
@@ -57,7 +58,8 @@ public sealed record MachineSnapshot
     public double ParkXmm { get; init; }
     public double ParkYmm { get; init; }
     public double AllowedSpoilboardDepthMm { get; init; }
-    public bool IsComplete => !string.IsNullOrWhiteSpace(Name) && MaximumXmm > MinimumXmm && MaximumYmm > MinimumYmm && MaximumZmm > MinimumZmm && RapidRateMmPerMin > 0 && MaximumSpindleRpm > 0 && DefaultClearanceMm > 0 && HolderDiameterMm > 0 && HolderLengthMm > 0 && AllowedSpoilboardDepthMm >= 0;
+    public string PostProcessorId { get; init; } = "uccnc-mm";
+    public bool IsComplete => !string.IsNullOrWhiteSpace(Name) && !string.IsNullOrWhiteSpace(PostProcessorId) && MaximumXmm > MinimumXmm && MaximumYmm > MinimumYmm && MaximumZmm > MinimumZmm && RapidRateMmPerMin > 0 && MaximumSpindleRpm > 0 && DefaultClearanceMm > 0 && HolderDiameterMm > 0 && HolderLengthMm > 0 && AllowedSpoilboardDepthMm >= 0;
 }
 
 public sealed record FixtureDefinition

@@ -1,3 +1,5 @@
+using CncCad.Cam.Operations;
+
 namespace CncCad.Cam.Tools;
 
 public enum ToolType { EndMill, BallNose, VBit, EngravingBit, Drill, SurfacingBit, TaperedBallNose, CompressionBit, UpcutBit, DowncutBit, Other }
@@ -44,4 +46,29 @@ public sealed class CncTool
         if (StickOutMm is <= 0) errors.Add("Stick-out must be greater than zero when supplied.");
         return errors;
     }
+}
+
+public sealed class MaterialDefinition
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "New material";
+    public string Category { get; set; } = "General";
+    public string? Notes { get; set; }
+}
+
+public sealed class ToolCuttingPreset
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid ToolId { get; set; }
+    public Guid MachineId { get; set; }
+    public Guid MaterialId { get; set; }
+    public double FeedRateMmPerMin { get; set; }
+    public double PlungeRateMmPerMin { get; set; }
+    public int SpindleRpm { get; set; }
+    public double PassDepthMm { get; set; }
+    public double StepOverPercent { get; set; }
+    public ToolSnapshot Apply(CncTool tool) => ToolSnapshot.FromTool(tool) with { FeedRateMmPerMin=FeedRateMmPerMin,PlungeRateMmPerMin=PlungeRateMmPerMin,SpindleRpm=SpindleRpm,StepDownMm=PassDepthMm };
+    public IReadOnlyList<string> Validate() =>
+        FeedRateMmPerMin<=0||PlungeRateMmPerMin<=0||SpindleRpm<=0||PassDepthMm<=0||StepOverPercent is <=0 or >100
+            ? ["Preset feed, plunge, RPM, pass depth, and stepover must be valid positive values."] : [];
 }

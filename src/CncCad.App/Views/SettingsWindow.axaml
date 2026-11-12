@@ -1,6 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="CncCad.App.Views.SettingsWindow" Width="560" Height="620" CanResize="False"
-        WindowStartupLocation="CenterOwner" Background="#181E23" Title="CNC CAD Settings">
+        WindowStartupLocation="CenterOwner" Background="#181E23" Title="V-Router Settings">
   <Grid RowDefinitions="Auto,*,Auto">
     <Border Background="#20282E" Padding="22,17" BorderBrush="#35414A" BorderThickness="0,0,0,1">
       <StackPanel><TextBlock Text="Application Settings" FontSize="22" FontWeight="SemiBold"/><TextBlock Text="Defaults for new sessions; project machining data is unaffected." Foreground="#9AA9B4"/></StackPanel>

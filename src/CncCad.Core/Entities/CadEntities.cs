@@ -12,6 +12,7 @@ namespace CncCad.Core.Entities;
 [JsonDerivedType(typeof(EllipseEntity), "ellipse")]
 [JsonDerivedType(typeof(VectorPathEntity), "vectorPath")]
 [JsonDerivedType(typeof(TextEntity), "text")]
+[JsonDerivedType(typeof(DrillPointEntity), "drillPoint")]
 public abstract class CadEntity
 {
     public Guid Id { get; init; } = Guid.NewGuid();
@@ -53,6 +54,16 @@ public sealed class CircleEntity : CadEntity
     public Point2D Center { get; set; }
     public double Radius { get; set; }
     public override BoundingBox GetBounds() => EntityGeometry.WorldBounds(this);
+}
+
+public sealed class DrillPointEntity : CadEntity
+{
+    public Point2D Position { get; set; }
+    public override BoundingBox GetBounds()
+    {
+        var point = Transform.Transform(Position);
+        return new(point.X, point.Y, point.X, point.Y);
+    }
 }
 
 public sealed class ArcEntity : CadEntity
