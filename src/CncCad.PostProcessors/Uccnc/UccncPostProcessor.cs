@@ -61,6 +61,13 @@ public class DeclarativeGCodePostProcessor(PostDefinition definition) : IPostPro
         var toolChanges=motion.Events.Where(trace=>trace.Kind==MotionEventKind.ToolChange).Select(trace=>(ToolChange)trace.Source).ToArray();
         var tools=toolChanges.Select(x=>x.ToolNumber).Distinct().ToArray();
         if(tools.Any(x=>x is null or <=0))result.Add(new(PostDiagnosticSeverity.Error,"invalid-tool","Every exported tool requires a positive tool number."));
+        if(toolChanges.Length>0&&request.ExportScope==PostExportScope.Combined)
+        {
+            if(request.MachineSnapshot.ToolChangeMode==MachineToolChangeMode.Automatic&&!Definition.Capabilities.HasFlag(PostCapability.AutomaticToolChange))
+                result.Add(new(PostDiagnosticSeverity.Error,"unsupported-automatic-tool-change",$"{Definition.DisplayName} does not support automatic tool-change commands. Use separate cutter files or a compatible post."));
+            if(request.MachineSnapshot.ToolChangeMode==MachineToolChangeMode.ManualPause&&!Definition.Capabilities.HasFlag(PostCapability.ManualToolChange))
+                result.Add(new(PostDiagnosticSeverity.Error,"unsupported-manual-tool-change",$"{Definition.DisplayName} does not support a manual tool-change pause. Use separate cutter files or a compatible post."));
+        }
         foreach(var operation in request.Program.Operations)
         {
             var changes=operation.Moves.OfType<ToolChange>().ToArray();
@@ -108,6 +115,7 @@ public class DeclarativeGCodePostProcessor(PostDefinition definition) : IPostPro
                         if(scope==PostExportScope.SeparateByTool)Line(Comment($"Load T{tool.ToolNumber} {tool.ToolName}"));
                         else if(machine.ToolChangeMode==MachineToolChangeMode.Automatic)Line($"T{tool.ToolNumber} M6 {Comment(tool.ToolName)}");
                         else if(machine.ToolChangeMode==MachineToolChangeMode.ManualPause){Line(Comment($"Load T{tool.ToolNumber} {tool.ToolName}"));Line("M0");}
+                        else Line(Comment($"Load T{tool.ToolNumber} {tool.ToolName}"));
                         activeTool=tool.ToolNumber;
                         break;
                     case MotionEventKind.SpindleStart when trace.Source is SpindleStart start:Line($"M3 S{start.Rpm}");spindle=true;break;

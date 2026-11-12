@@ -10,6 +10,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using CncCad.App.ViewModels;
 using CncCad.App.Views;
+using CncCad.Cam.Safety;
 using CncCad.Cam.Tools;
 using CncCad.Core.Documents;
 using CncCad.Core.Entities;
@@ -18,6 +19,7 @@ using CncCad.Core.Preview;
 using CncCad.Infrastructure.Persistence;
 using CncCad.Infrastructure.Settings;
 using CncCad.Rendering.Canvas;
+using CncCad.Simulation.Playback;
 
 namespace CncCad.App.HeadlessTests;
 
@@ -116,6 +118,30 @@ public sealed class CommandHelpHeadlessTests
             Assert.True(appearance.IsVisible);Assert.Contains("procedural material",CommandHelp.DescriptorFor(appearance)!.Summary,StringComparison.OrdinalIgnoreCase);Assert.Contains("Hardwood",Assert.IsType<string>(ToolTip.GetTip(appearance)));
             Assert.Equal(PreviewRenderStyle.Material,vm.PreviewSettings.Style);appearance.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();
             Assert.Equal(PreviewRenderStyle.Technical,vm.PreviewSettings.Style);Assert.True(vm.IsDirty);
+        }
+        finally{window.Close();}
+    }
+
+    [AvaloniaFact]
+    public void PlaybackControlsExecutePlayPauseSeekSpeedRestartAndStopAtMinimumSize()
+    {
+        var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent())
+        {
+            SelectedMachine=new MachineProfileDefinition(),
+            SelectedTool=new CncTool{Name="6mm End Mill",ToolNumber=1,DiameterMm=6,StepDownMm=3,CuttingLengthMm=30,OverallLengthMm=50,ShankDiameterMm=6,StickOutMm=35,FeedRateMmPerMin=1200,PlungeRateMmPerMin=300,SpindleRpm=18000}
+        };
+        vm.CreateJob(new JobSettings{Name="Playback UI",WidthMm=100,HeightMm=100,ThicknessMm=18});vm.AddEntity(new RectangleEntity{LayerId=vm.Document.ActiveLayerId,Origin=new(20,20),Width=50,Height=40});vm.AddOperation(vm.CreateProfileDraft());vm.LoadAllPlayback();vm.SetViewportLayout(ViewportLayout.Preview3D);
+        var window=new MainWindow{DataContext=vm,Width=1100,Height=700};window.Show();Dispatcher.UIThread.RunJobs();
+        try
+        {
+            var play=window.FindControl<Button>("PlayPauseButton");var stop=window.FindControl<Button>("PlaybackStopButton");var restart=window.FindControl<Button>("PlaybackRestartButton");var slider=window.FindControl<Slider>("PlaybackSlider");var speed=window.FindControl<ComboBox>("PlaybackSpeedCombo");Assert.NotNull(play);Assert.NotNull(stop);Assert.NotNull(restart);Assert.NotNull(slider);Assert.NotNull(speed);Assert.True(play.IsVisible);Assert.True(slider.IsVisible);
+            play.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();Assert.Equal(PlaybackState.Playing,vm.Playback.State);Assert.Equal("Pause",vm.PlaybackAction);
+            play.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();Assert.Equal(PlaybackState.Paused,vm.Playback.State);Assert.Equal("Play",vm.PlaybackAction);
+            slider.Value=50;Dispatcher.UIThread.RunJobs();Assert.Equal(.5,vm.Playback.Frame.Progress,2);
+            speed.SelectedItem=10d;Dispatcher.UIThread.RunJobs();Assert.Equal(10,vm.PlaybackSpeed);
+            restart.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();Assert.Equal(PlaybackState.Playing,vm.Playback.State);Assert.InRange(vm.Playback.Frame.Progress,0,.01);
+            stop.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();Assert.Equal(PlaybackState.Paused,vm.Playback.State);Assert.Equal(0,vm.Playback.Frame.Progress);
+            Assert.Equal("Toolpath playback position",AutomationProperties.GetName(slider));Assert.Equal("Toolpath playback speed",AutomationProperties.GetName(speed));
         }
         finally{window.Close();}
     }

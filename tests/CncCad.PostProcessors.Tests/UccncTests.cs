@@ -108,6 +108,24 @@ public class UccncTests
         Assert.False(result.Success);Assert.Contains(result.Errors,x=>x.Code=="multi-tool-file-unsafe");
     }
 
+    [Fact] public void ControllerCapabilitiesBlockUnsupportedAutomaticOrManualToolChangeCommands()
+    {
+        var program=new ToolpathProgram{Operations=[new(){Moves=[new ToolChange(1,"6mm End Mill"),new RapidMove(new(0,0),5)]}]};
+        var grblAutomatic=Process(program,new(){ControllerFamily=ControllerFamily.Grbl,ToolChangeMode=MachineToolChangeMode.Automatic},definition:BuiltInPostDefinitions.Grbl);
+        Assert.False(grblAutomatic.Success);Assert.Contains(grblAutomatic.Errors,x=>x.Code=="unsupported-automatic-tool-change");Assert.Empty(grblAutomatic.Files);
+        var grblManual=Process(program,new(){ControllerFamily=ControllerFamily.Grbl,ToolChangeMode=MachineToolChangeMode.ManualPause},definition:BuiltInPostDefinitions.Grbl);
+        Assert.False(grblManual.Success);Assert.Contains(grblManual.Errors,x=>x.Code=="unsupported-manual-tool-change");Assert.Empty(grblManual.Files);
+        var linuxAutomatic=Process(program,new(){ControllerFamily=ControllerFamily.LinuxCnc,ToolChangeMode=MachineToolChangeMode.Automatic},definition:BuiltInPostDefinitions.LinuxCnc);
+        Assert.False(linuxAutomatic.Success);Assert.Contains(linuxAutomatic.Errors,x=>x.Code=="unsupported-automatic-tool-change");Assert.Empty(linuxAutomatic.Files);
+    }
+
+    [Fact] public void SeparateFileMachineModeAlwaysNamesTheCutterWithoutEmittingAPause()
+    {
+        var program=new ToolpathProgram{Operations=[new(){Moves=[new ToolChange(1,"6mm End Mill"),new RapidMove(new(0,0),5)]}]};
+        var result=Process(program,new(){ControllerFamily=ControllerFamily.Grbl,ToolChangeMode=MachineToolChangeMode.SeparateFiles},definition:BuiltInPostDefinitions.Grbl);
+        var code=Code(result);Assert.Contains("; Load T1 6mm End Mill",code);Assert.DoesNotContain("M0",code);Assert.DoesNotContain("M6",code);
+    }
+
     [Fact] public void SeparateByToolCreatesIndependentFilesWithoutPause()
     {
         var program=new ToolpathProgram{Name="Batch",Operations=[new(){Moves=[new ToolChange(1,"A"),new RapidMove(new(0,0),5)]},new(){Moves=[new ToolChange(2,"B"),new RapidMove(new(1,1),5)]}]};

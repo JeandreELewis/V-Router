@@ -10,6 +10,7 @@ The application reports built-in controller definitions as **certification pendi
 - A CycloneDX JSON SBOM is attached to the tagged build.
 - Versions 1–8 open in memory as version 9, preserve editable geometry/CAM data, and save/reopen deterministically.
 - Cabinet, sign and nested-sheet proof projects pass preflight and deterministic export for all five built-in posts in metric and imperial modes.
+- Exact controller golden files for all five posts pass in metric and imperial modes, including arcs, dwell, comments and their supported automatic/manual/separate-file cutter handling.
 - Every generated machine file contains exactly one cutter identity, independent of `.nc`, `.txt`, `.tap`, `.gcode` or `.ngc` filename extension.
 - The V-Router logo is present in the startup workspace, window chrome and About view, and is embedded in Windows executable/installer/shortcut metadata, the macOS app bundle and Linux desktop packaging.
 - There are no unresolved critical or high defects.
