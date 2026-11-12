@@ -11,7 +11,7 @@ public sealed class LibraryMigrationTests
         var path=Path.Combine(Path.GetTempPath(),$"v-router-library-{Guid.NewGuid():N}.db");
         try
         {
-            var options=new DbContextOptionsBuilder<ToolLibraryDbContext>().UseSqlite($"Data Source={path}").Options;
+            var options=new DbContextOptionsBuilder<ToolLibraryDbContext>().UseSqlite($"Data Source={path};Pooling=False").Options;
             await using(var setup=new ToolLibraryDbContext(options))
             {
                 await setup.Database.EnsureCreatedAsync();
