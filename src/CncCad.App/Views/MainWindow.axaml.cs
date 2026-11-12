@@ -516,12 +516,12 @@ public partial class MainWindow : Window
         if(!ViewModel.CanSaveToolpaths){ViewModel.Message=ViewModel.ExportAvailabilityMessage;return;}
         try
         {
-            var generated=ViewModel.GenerateExportPrograms(ToolpathExportScope.VisibleCombined);if(generated.Count!=1)throw new InvalidOperationException("This machine requires separate files per tool. Use Save Toolpaths to choose a destination folder.");var program=generated[0];
+            ViewModel.SelectedExportFormat=format;var generated=ViewModel.GenerateExportPrograms(ToolpathExportScope.VisibleCombined);if(generated.Count!=1)throw new InvalidOperationException("Different cutters require separate machine files. Use Save Toolpaths to choose a destination folder.");var program=generated[0];
             if(program.WarningCount>0&&!await ConfirmWarningsAsync(program.WarningCount))return;
-            ViewModel.SelectedExportFormat=format;var extension=program.Extension.TrimStart('.');
-            var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions { Title = "Export machine program", SuggestedFileName = program.FileStem, DefaultExtension=extension, FileTypeChoices = [new FilePickerFileType("Machine program") { Patterns = [$"*{program.Extension}"] }] });
+            var extension=format.Extension.TrimStart('.');
+            var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions { Title = "Export machine program", SuggestedFileName = program.FileStem, DefaultExtension=extension, FileTypeChoices = [new FilePickerFileType($"Machine program {format.Extension}") { Patterns = [$"*{format.Extension}"] }] });
             if (file is null) return;
-            var path=GCodeExportFormat.NormalizePath(file.Path.LocalPath,program.Extension);await WriteTextAtomicallyAsync(path,program.Text);ViewModel.Message=$"Exported {Path.GetFileName(path)}";
+            var path=GCodeExportFormat.NormalizePath(file.Path.LocalPath,format.Extension);await WriteTextAtomicallyAsync(path,program.Text);ViewModel.Message=$"Exported {Path.GetFileName(path)}";
         }
         catch (Exception ex) { ViewModel.Message = $"Could not export G-code: {ex.Message}"; }
     }

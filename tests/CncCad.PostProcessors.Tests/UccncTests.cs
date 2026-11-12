@@ -151,6 +151,14 @@ public class UccncTests
         Assert.False(sameNameResult.Success);Assert.Contains(sameNameResult.Errors,x=>x.Code=="duplicate-tool-number");
     }
 
+    [Fact] public void CutterIdentityCannotBypassSingleCutterFiles()
+    {
+        var missingSelection=new ToolpathProgram{Operations=[new(){Name="Hidden cutter",ToolId=Guid.NewGuid(),Moves=[new RapidMove(new(0,0),5)]}]};
+        var missingResult=Process(missingSelection);Assert.False(missingResult.Success);Assert.Contains(missingResult.Errors,x=>x.Code=="missing-tool-selection");
+        var changingOperation=new ToolpathProgram{Operations=[new(){Name="Unsafe operation",Moves=[new ToolChange(1,"A"),new RapidMove(new(0,0),5),new ToolChange(2,"B"),new RapidMove(new(1,1),5)]}]};
+        var changingResult=Process(changingOperation,scope:PostExportScope.SeparateByTool);Assert.False(changingResult.Success);Assert.Contains(changingResult.Errors,x=>x.Code=="operation-multiple-tools");
+    }
+
     [Fact] public void CommunityDefinitionsAreDeclarativeUncertifiedAndInvalidFilesAreIsolated()
     {
         var directory=Path.Combine(Path.GetTempPath(),$"v-router-posts-{Guid.NewGuid():N}");Directory.CreateDirectory(directory);

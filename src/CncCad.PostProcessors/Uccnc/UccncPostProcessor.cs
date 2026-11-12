@@ -34,7 +34,7 @@ public class DeclarativeGCodePostProcessor(PostDefinition definition) : IPostPro
         ArgumentNullException.ThrowIfNull(request);
         var diagnostics=Validate(request);
         if(diagnostics.Any(x=>x.Severity==PostDiagnosticSeverity.Error))return new([],diagnostics);
-        var groups=request.ExportScope==PostExportScope.SeparateByTool?GroupConsecutiveByTool(request.Program):[(Tool:(int?)null,Program:request.Program)];
+        var groups=request.ExportScope==PostExportScope.SeparateByTool?GroupConsecutiveByCutter(request.Program):[(Tool:(int?)null,Program:request.Program)];
         var files=new List<GeneratedPostFile>();
         for(var index=0;index<groups.Count;index++)
         {
@@ -61,10 +61,19 @@ public class DeclarativeGCodePostProcessor(PostDefinition definition) : IPostPro
         var toolChanges=motion.Events.Where(trace=>trace.Kind==MotionEventKind.ToolChange).Select(trace=>(ToolChange)trace.Source).ToArray();
         var tools=toolChanges.Select(x=>x.ToolNumber).Distinct().ToArray();
         if(tools.Any(x=>x is null or <=0))result.Add(new(PostDiagnosticSeverity.Error,"invalid-tool","Every exported tool requires a positive tool number."));
+        foreach(var operation in request.Program.Operations)
+        {
+            var changes=operation.Moves.OfType<ToolChange>().ToArray();
+            if(operation.ToolId!=Guid.Empty&&changes.Length==0)result.Add(new(PostDiagnosticSeverity.Error,"missing-tool-selection",$"{operation.Name}: the cutter snapshot is not accompanied by a tool selection command."));
+            if(changes.Select(CutterChangeKey).Distinct(StringComparer.OrdinalIgnoreCase).Skip(1).Any())result.Add(new(PostDiagnosticSeverity.Error,"operation-multiple-tools",$"{operation.Name}: one operation cannot contain more than one cutter."));
+        }
         var operationTools=request.Program.Operations.Select(operation=>(operation.ToolId,Change:operation.Moves.OfType<ToolChange>().FirstOrDefault())).Where(x=>x.Change?.ToolNumber is>0).ToArray();
         var reusedNumber=operationTools.GroupBy(x=>x.Change!.ToolNumber).FirstOrDefault(group=>group.Select(x=>x.Change!.ToolName.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count()>1||group.Where(x=>x.ToolId!=Guid.Empty).Select(x=>x.ToolId).Distinct().Count()>1);
         if(reusedNumber is not null)result.Add(new(PostDiagnosticSeverity.Error,"duplicate-tool-number",$"Tool number T{reusedNumber.Key} is assigned to more than one cutter. Assign a unique number to every different cutter."));
-        if(request.ExportScope==PostExportScope.Combined&&tools.Length>1)
+        var inconsistentIdentity=operationTools.Where(x=>x.ToolId!=Guid.Empty).GroupBy(x=>x.ToolId).FirstOrDefault(group=>group.Select(x=>CutterChangeKey(x.Change!)).Distinct(StringComparer.OrdinalIgnoreCase).Skip(1).Any());
+        if(inconsistentIdentity is not null)result.Add(new(PostDiagnosticSeverity.Error,"tool-identity-conflict","One cutter identity has conflicting tool numbers or names. Refresh the affected operation snapshots."));
+        var cutterCount=request.Program.Operations.Select(CutterIdentityKey).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+        if(request.ExportScope==PostExportScope.Combined&&cutterCount>1)
             result.Add(new(PostDiagnosticSeverity.Error,"multi-tool-file-unsafe","A runnable machine file may contain only one cutter. Export separate files per tool."));
         if(!request.MachineSnapshot.SupportsArcs&&motion.Events.Any(trace=>trace.Kind==MotionEventKind.Arc))result.Add(new(PostDiagnosticSeverity.Error,"machine-arcs","The selected machine profile does not allow arcs."));
         if(request.MachineSnapshot.ControllerFamily!=ControllerFamily.Community&&request.MachineSnapshot.ControllerFamily!=Definition.ControllerFamily)result.Add(new(PostDiagnosticSeverity.Error,"controller-family",$"The {request.MachineSnapshot.ControllerFamily} machine profile is not compatible with the {Definition.DisplayName} post."));
@@ -116,16 +125,18 @@ public class DeclarativeGCodePostProcessor(PostDefinition definition) : IPostPro
         output.AppendLine($"G0 Z{N(Z(machine.SafeZMm))}");output.AppendLine("M5");if(machine.ParkEnabled)output.AppendLine($"G53 G0 X{N(machine.ParkXmm)} Y{N(machine.ParkYmm)}");foreach(var line in Definition.FooterLines)output.AppendLine(line);return output.ToString();
     }
 
-    private static IReadOnlyList<(int? Tool,ToolpathProgram Program)> GroupConsecutiveByTool(ToolpathProgram program)
+    private static IReadOnlyList<(int? Tool,ToolpathProgram Program)> GroupConsecutiveByCutter(ToolpathProgram program)
     {
-        var groups=new List<(int? Tool,ToolpathProgram Program)>();
+        var groups=new List<(string Cutter,int? Tool,ToolpathProgram Program)>();
         foreach(var operation in program.Operations)
         {
-            var tool=operation.Moves.OfType<ToolChange>().FirstOrDefault()?.ToolNumber;
-            if(groups.Count==0||groups[^1].Tool!=tool)groups.Add((tool,new ToolpathProgram{Name=program.Name,Operations=[operation]}));
+            var change=operation.Moves.OfType<ToolChange>().FirstOrDefault();var cutter=CutterIdentityKey(operation);var tool=change?.ToolNumber;
+            if(groups.Count==0||!string.Equals(groups[^1].Cutter,cutter,StringComparison.OrdinalIgnoreCase))groups.Add((cutter,tool,new ToolpathProgram{Name=program.Name,Operations=[operation]}));
             else groups[^1].Program.Operations.Add(operation);
         }
-        return groups;
+        return groups.Select(group=>(group.Tool,group.Program)).ToArray();
     }
+    private static string CutterIdentityKey(ToolpathOperation operation)=>operation.ToolId!=Guid.Empty?$"id:{operation.ToolId:N}":operation.Moves.OfType<ToolChange>().FirstOrDefault() is{} change?$"change:{CutterChangeKey(change)}":"unspecified";
+    private static string CutterChangeKey(ToolChange change)=>$"{change.ToolNumber?.ToString(CultureInfo.InvariantCulture)??"none"}:{change.ToolName.Trim()}";
     private static string SafeStem(string value){var invalid=Path.GetInvalidFileNameChars().ToHashSet();var safe=new string(value.Where(c=>!invalid.Contains(c)).ToArray()).Trim();return string.IsNullOrWhiteSpace(safe)?"v-router-job":safe;}
 }
