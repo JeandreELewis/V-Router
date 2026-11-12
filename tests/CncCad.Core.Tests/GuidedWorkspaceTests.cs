@@ -214,6 +214,13 @@ public class GuidedWorkspaceTests
         finally{if(File.Exists(path))File.Delete(path);}
     }
 
+    [Fact] public async Task LibraryCrudSearchAndPresetSnapshotsAreCompleteAndReferentiallySafe()
+    {
+        var libraries=new MemoryLibraries();var vm=new MainWindowViewModel(libraries,new MemoryRecent(),libraries,materialLibrary:libraries,presetRepository:libraries);await vm.LoadAsync();await vm.AddToolAsync();vm.SelectedTool!.Name="6 mm finishing";vm.SelectedTool.FeedRateMmPerMin=1800;vm.SelectedTool.PlungeRateMmPerMin=450;vm.SelectedTool.SpindleRpm=17000;vm.SelectedTool.StepDownMm=3;vm.SelectedTool.StepOverPercent=40;await vm.SaveSelectedToolAsync();vm.AddMachineProfile();vm.SelectedMachine!.Name="Shop Router";await vm.SaveSelectedMachineAsync();await vm.AddMaterialAsync();vm.SelectedMaterial!.Name="Birch plywood";vm.SelectedMaterial.Category="Sheet goods";await vm.SaveSelectedMaterialAsync();await vm.AddPresetAsync();vm.SelectedToolPreset!.FeedRateMmPerMin=2345;vm.SelectedToolPreset.PlungeRateMmPerMin=345;vm.SelectedToolPreset.SpindleRpm=17600;vm.SelectedToolPreset.PassDepthMm=2.25;vm.SelectedToolPreset.StepOverPercent=31;await vm.SaveSelectedPresetAsync();
+        vm.ToolSearch="finishing";Assert.Single(vm.FilteredTools);vm.MachineSearch="shop";Assert.Single(vm.FilteredMachines);vm.MaterialSearch="plywood";Assert.Single(vm.FilteredMaterials);vm.PresetSearch="birch";Assert.Single(vm.FilteredToolPresets);vm.CreateJob(new JobSettings{WidthMm=100,HeightMm=80,ThicknessMm=12});var rectangle=new RectangleEntity{LayerId=vm.Document.ActiveLayerId,Width=60,Height=40};vm.AddEntity(rectangle);var pocket=vm.CreatePocketDraft();Assert.Equal(2345,pocket.Tool.FeedRateMmPerMin);Assert.Equal(345,pocket.Tool.PlungeRateMmPerMin);Assert.Equal(17600,pocket.Tool.SpindleRpm);Assert.Equal(2.25,pocket.PassDepthMm);Assert.Equal(1.86,pocket.StepOverMm,6);vm.SelectedToolPreset.FeedRateMmPerMin=999;Assert.Equal(2345,pocket.Tool.FeedRateMmPerMin);
+        await Assert.ThrowsAsync<InvalidOperationException>(()=>vm.DeleteSelectedToolAsync());await Assert.ThrowsAsync<InvalidOperationException>(()=>vm.DeleteSelectedMachineAsync());await Assert.ThrowsAsync<InvalidOperationException>(()=>vm.DeleteSelectedMaterialAsync());await vm.DeleteSelectedPresetAsync();await vm.DeleteSelectedToolAsync();await vm.DeleteSelectedMachineAsync();await vm.DeleteSelectedMaterialAsync();Assert.Empty(libraries.Tools);Assert.Empty(libraries.Machines);Assert.Empty(libraries.Materials);Assert.Empty(libraries.Presets);
+    }
+
     private static MainWindowViewModel ViewModel()
     {
         var vm = new MainWindowViewModel(new MemoryTools(), new MemoryRecent()); vm.SelectedTool = new CncTool { Name = "6mm End Mill", DiameterMm = 6, StepDownMm = 3, CuttingLengthMm=30, OverallLengthMm=50, ShankDiameterMm=6, StickOutMm=35 };vm.Machines.Add(new MachineProfileDefinition());vm.SelectedMachine=vm.Machines[0]; return vm;
@@ -229,6 +236,14 @@ public class GuidedWorkspaceTests
         public Task<IReadOnlyList<RecentProject>> GetAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<RecentProject>>([]);
         public Task AddAsync(string path, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task RemoveAsync(string path, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+    private sealed class MemoryLibraries:IToolLibrary,IMachineProfileRepository,IMaterialLibrary,IToolCuttingPresetRepository
+    {
+        public Dictionary<Guid,CncTool> Tools{get;}=[];public Dictionary<Guid,MachineProfileDefinition> Machines{get;}=[];public Dictionary<Guid,MaterialDefinition> Materials{get;}=[];public Dictionary<Guid,ToolCuttingPreset> Presets{get;}=[];
+        Task<IReadOnlyList<CncTool>> IToolLibrary.GetAllAsync(CancellationToken cancellationToken)=>Task.FromResult<IReadOnlyList<CncTool>>(Tools.Values.ToArray());Task IToolLibrary.SaveAsync(CncTool value,CancellationToken cancellationToken){Tools[value.Id]=value;return Task.CompletedTask;}Task IToolLibrary.DeleteAsync(Guid id,CancellationToken cancellationToken){Tools.Remove(id);return Task.CompletedTask;}
+        Task<IReadOnlyList<MachineProfileDefinition>> IMachineProfileRepository.GetAllAsync(CancellationToken cancellationToken)=>Task.FromResult<IReadOnlyList<MachineProfileDefinition>>(Machines.Values.ToArray());Task IMachineProfileRepository.SaveAsync(MachineProfileDefinition value,CancellationToken cancellationToken){Machines[value.Id]=value;return Task.CompletedTask;}Task IMachineProfileRepository.DeleteAsync(Guid id,CancellationToken cancellationToken){Machines.Remove(id);return Task.CompletedTask;}
+        Task<IReadOnlyList<MaterialDefinition>> IMaterialLibrary.GetAllAsync(CancellationToken cancellationToken)=>Task.FromResult<IReadOnlyList<MaterialDefinition>>(Materials.Values.ToArray());Task IMaterialLibrary.SaveAsync(MaterialDefinition value,CancellationToken cancellationToken){Materials[value.Id]=value;return Task.CompletedTask;}Task IMaterialLibrary.DeleteAsync(Guid id,CancellationToken cancellationToken){Materials.Remove(id);return Task.CompletedTask;}
+        Task<IReadOnlyList<ToolCuttingPreset>> IToolCuttingPresetRepository.GetAllAsync(CancellationToken cancellationToken)=>Task.FromResult<IReadOnlyList<ToolCuttingPreset>>(Presets.Values.ToArray());Task IToolCuttingPresetRepository.SaveAsync(ToolCuttingPreset value,CancellationToken cancellationToken){Presets[value.Id]=value;return Task.CompletedTask;}Task IToolCuttingPresetRepository.DeleteAsync(Guid id,CancellationToken cancellationToken){Presets.Remove(id);return Task.CompletedTask;}
     }
     private sealed class FailingRecent : IRecentProjectStore
     {

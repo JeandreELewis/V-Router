@@ -454,6 +454,22 @@ public partial class MainWindow : Window
     private async void AddTool_Click(object? s, RoutedEventArgs e) { try { await ViewModel.AddToolAsync(); } catch (Exception ex) { ViewModel.Message = ex.Message; } }
     private async void SaveTool_Click(object? s,RoutedEventArgs e){try{await ViewModel.SaveSelectedToolAsync();}catch(Exception ex){ViewModel.Message=ex.Message;}}
     private async void DeleteTool_Click(object? s,RoutedEventArgs e){try{await ViewModel.DeleteSelectedToolAsync();}catch(Exception ex){ViewModel.Message=ex.Message;}}
+    private async void AddMaterial_Click(object? s,RoutedEventArgs e){try{await ViewModel.AddMaterialAsync();}catch(Exception ex){ViewModel.Message=ex.Message;}}
+    private async void SaveMaterial_Click(object? s,RoutedEventArgs e){try{await ViewModel.SaveSelectedMaterialAsync();}catch(Exception ex){ViewModel.Message=ex.Message;}}
+    private async void DeleteMaterial_Click(object? s,RoutedEventArgs e){try{await ViewModel.DeleteSelectedMaterialAsync();}catch(Exception ex){ViewModel.Message=ex.Message;}}
+    private async void AddPreset_Click(object? s,RoutedEventArgs e){try{await ViewModel.AddPresetAsync();}catch(Exception ex){ViewModel.Message=ex.Message;}}
+    private async void SavePreset_Click(object? s,RoutedEventArgs e){try{await ViewModel.SaveSelectedPresetAsync();}catch(Exception ex){ViewModel.Message=ex.Message;}}
+    private async void DeletePreset_Click(object? s,RoutedEventArgs e){try{await ViewModel.DeleteSelectedPresetAsync();}catch(Exception ex){ViewModel.Message=ex.Message;}}
+    private async void ExportLibrary_Click(object? s,RoutedEventArgs e)
+    {
+        try{var extension=ViewModel.LibraryExchangeExtension;var destination=await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions{Title="Export V-Router library",SuggestedFileName=$"v-router-{ViewModel.SelectedLibraryExchangeFormat.ToString().ToLowerInvariant()}.{extension}",DefaultExtension=extension,FileTypeChoices=[new FilePickerFileType(extension=="json"?"V-Router library package":"V-Router library CSV"){Patterns=[$"*.{extension}"]}]});if(destination is null)return;await using var stream=await destination.OpenWriteAsync();stream.SetLength(0);await ViewModel.ExportLibraryAsync(stream);}
+        catch(Exception ex){ViewModel.Message=ex.Message;}
+    }
+    private async void ImportLibrary_Click(object? s,RoutedEventArgs e)
+    {
+        try{var extension=ViewModel.LibraryExchangeExtension;var selected=await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions{Title="Import V-Router library",AllowMultiple=false,FileTypeFilter=[new FilePickerFileType(extension=="json"?"V-Router library package":"V-Router library CSV"){Patterns=[$"*.{extension}"]}]});var source=selected.FirstOrDefault();if(source is null)return;await using var stream=await source.OpenReadAsync();await ViewModel.ImportLibraryAsync(stream);}
+        catch(Exception ex){ViewModel.Message=ex.Message;}
+    }
     private void UseMachine_Click(object? s, RoutedEventArgs e) { try { ViewModel.SelectMachineSnapshot(); } catch(Exception ex) { ViewModel.Message=ex.Message; } }
     private async void SaveMachine_Click(object? s,RoutedEventArgs e){try{await ViewModel.SaveSelectedMachineAsync();}catch(Exception ex){ViewModel.Message=ex.Message;}}
     private void AddMachine_Click(object? s,RoutedEventArgs e)=>ViewModel.AddMachineProfile();

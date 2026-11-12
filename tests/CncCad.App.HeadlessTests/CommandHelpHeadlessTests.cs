@@ -144,6 +144,25 @@ public sealed class CommandHelpHeadlessTests
         finally{window.Close();}
     }
 
+    [AvaloniaFact]
+    public void LibraryTaskExposesSearchCrudAndEveryToolSafetyDimensionAtMinimumSize()
+    {
+        var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent());vm.CreateJob(new JobSettings{Name="Libraries",WidthMm=100,HeightMm=100,ThicknessMm=18});vm.SelectedMaterial=new(){Name="Birch",Category="Sheet"};vm.SelectedTool=new(){Name="6 mm",DiameterMm=6,CuttingLengthMm=20,OverallLengthMm=50,ShankDiameterMm=6,StickOutMm=30};vm.SelectedToolPreset=new(){ToolId=vm.SelectedTool.Id,MaterialId=vm.SelectedMaterial.Id,MachineId=Guid.NewGuid(),FeedRateMmPerMin=1000,PlungeRateMmPerMin=300,SpindleRpm=18000,PassDepthMm=2,StepOverPercent=40};vm.SetWorkspaceMode(WorkspaceMode.Toolpaths);vm.OpenToolpathTask(ToolpathTaskPage.ToolLibrary);var window=new MainWindow{DataContext=vm,Width=1100,Height=700};window.Show();Dispatcher.UIThread.RunJobs();
+        try
+        {
+            var placeholders=window.GetVisualDescendants().Where(control=>control.IsVisible).Select(control=>control switch{TextBox text=>text.PlaceholderText,NumericUpDown number=>number.PlaceholderText,_=>null}).Where(value=>value is not null).ToHashSet();foreach(var required in new[]{"Search materials…","Search tools…","Search presets…","Cut length","Overall length","Shank Ø","Stick-out","Feed","Plunge","RPM","Pass depth","Stepover %"})Assert.Contains(required,placeholders);var headings=window.GetVisualDescendants().OfType<TextBlock>().Where(control=>control.IsVisible).Select(control=>control.Text).ToArray();Assert.Contains("MATERIAL LIBRARY",headings);Assert.Contains("TOOL LIBRARY",headings);Assert.Contains("CUTTING PRESETS",headings);Assert.Contains("IMPORT / EXPORT",headings);var buttons=window.GetVisualDescendants().OfType<Button>().Where(control=>control.IsVisible).Select(control=>control.Content?.ToString()).ToArray();Assert.Contains("Import…",buttons);Assert.Contains("Export…",buttons);
+        }
+        finally{window.Close();}
+    }
+
+    [AvaloniaFact]
+    public void MachineTaskExposesSearchAndEverySafetyDimensionAtMinimumSize()
+    {
+        var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent());vm.CreateJob(new JobSettings{Name="Machine",WidthMm=100,HeightMm=100,ThicknessMm=18});vm.SelectedMachine=new();vm.SetWorkspaceMode(WorkspaceMode.Toolpaths);vm.OpenToolpathTask(ToolpathTaskPage.MachineFixtures);var window=new MainWindow{DataContext=vm,Width=1100,Height=700};window.Show();Dispatcher.UIThread.RunJobs();
+        try{var placeholders=window.GetVisualDescendants().Where(control=>control.IsVisible).Select(control=>control switch{TextBox text=>text.PlaceholderText,NumericUpDown number=>number.PlaceholderText,_=>null}).Where(value=>value is not null).ToHashSet();foreach(var required in new[]{"Search machines…","Min X","Max X","Min Y","Max Y","Min Z","Max Z","Rapid mm/min","Tool change sec","Max RPM","Clearance","Holder Ø","Holder length","Tool change X","Tool change Y","Allowed spoilboard cut","Park X","Park Y"})Assert.Contains(required,placeholders);}
+        finally{window.Close();}
+    }
+
     private sealed class MemoryTools:IToolLibrary
     {
         public Task<IReadOnlyList<CncTool>> GetAllAsync(CancellationToken cancellationToken=default)=>Task.FromResult<IReadOnlyList<CncTool>>([]);

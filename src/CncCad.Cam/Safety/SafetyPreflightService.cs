@@ -164,14 +164,57 @@ public sealed class SafetyPreflightService : ISafetyPreflightService
     }
     private static void ValidateSweptFixtures(MotionTraceEvent trace,ToolSnapshot tool,MachineSnapshot machine,IReadOnlyList<FixtureDefinition> fixtures,List<SafetyFinding> findings)
     {
-        if(fixtures.Count==0)return;var pieces=trace.Kind==MotionEventKind.Arc?Math.Max(8,(int)Math.Ceiling(trace.PathLengthMm/.25)):1;for(var piece=0;piece<pieces;piece++){var from=piece/(double)pieces;var to=(piece+1d)/pieces;var a=trace.PointAt(from);var b=trace.PointAt(to);var az=trace.ZAt(from);var bz=trace.ZAt(to);foreach(var fixture in fixtures)
+        if(fixtures.Count==0)return;
+        foreach(var fixture in fixtures)
+        {
+            Check(tool.DiameterMm/2,0,"fixture-collision",$"Tool intersects fixture '{fixture.Name}'.","Move the fixture or change the toolpath/clearance.");
+            if(tool.CuttingLengthMm is{} cutting&&tool.ShankDiameterMm is{} shank)Check(shank/2,cutting,"shank-collision",$"Tool shank intersects fixture '{fixture.Name}'.","Increase stick-out, move the fixture, or change the route.");
+            if(tool.StickOutMm is{} stickOut)Check(machine.HolderDiameterMm/2,stickOut,"holder-collision",$"Holder/collet intersects fixture '{fixture.Name}'.","Increase verified clearance or move the fixture.");
+            if(trace.Kind==MotionEventKind.Rapid)
+            foreach(var interval in TraceIntervals(trace,fixture,tool.DiameterMm/2))
             {
-                Check(tool.DiameterMm/2,0,"fixture-collision",$"Tool intersects fixture '{fixture.Name}'.","Move the fixture or change the toolpath/clearance.");
-                if(tool.CuttingLengthMm is{} cutting&&tool.ShankDiameterMm is{} shank)Check(shank/2,cutting,"shank-collision",$"Tool shank intersects fixture '{fixture.Name}'.","Increase stick-out, move the fixture, or change the route.");
-                if(tool.StickOutMm is{} stickOut)Check(machine.HolderDiameterMm/2,stickOut,"holder-collision",$"Holder/collet intersects fixture '{fixture.Name}'.","Increase verified clearance or move the fixture.");
-                if(trace.Kind==MotionEventKind.Rapid&&TryInterval(a,b,fixture,tool.DiameterMm/2,out var rapidEnter,out var rapidExit)){var lowest=Math.Min(az+(bz-az)*rapidEnter,bz-(bz-az)*(1-rapidExit));if(lowest-fixture.TopZmm<fixture.RequiredClearanceMm-Epsilon)AddUnique(findings,new(SafetySeverity.Error,"fixture-clearance",$"Rapid move does not clear fixture '{fixture.Name}'.",$"Maintain at least {fixture.RequiredClearanceMm:0.###} mm clearance.",trace.OperationId,trace.MoveIndex,trace.PointAt(from+(to-from)*rapidEnter),trace.ZAt(from+(to-from)*rapidEnter)));}
-                void Check(double radius,double verticalOffset,string code,string message,string suggestion){if(radius<=0||!TryInterval(a,b,fixture,radius,out var enter,out var exit))return;var lowest=Math.Min(az+(bz-az)*enter,bz-(bz-az)*(1-exit))+verticalOffset;if(lowest<=fixture.TopZmm+Epsilon)AddUnique(findings,new(SafetySeverity.Error,code,message,suggestion,trace.OperationId,trace.MoveIndex,trace.PointAt(from+(to-from)*enter),trace.ZAt(from+(to-from)*enter)));}
-            }}
+                var lowestProgress=trace.ZAt(interval.Enter)<=trace.ZAt(interval.Exit)?interval.Enter:interval.Exit;var lowest=trace.ZAt(lowestProgress);
+                if(lowest-fixture.TopZmm<fixture.RequiredClearanceMm-Epsilon)AddUnique(findings,new(SafetySeverity.Error,"fixture-clearance",$"Rapid move does not clear fixture '{fixture.Name}'.",$"Maintain at least {fixture.RequiredClearanceMm:0.###} mm clearance.",trace.OperationId,trace.MoveIndex,trace.PointAt(lowestProgress),lowest));
+            }
+            void Check(double radius,double verticalOffset,string code,string message,string suggestion)
+            {
+                if(radius<=0)return;
+                foreach(var interval in TraceIntervals(trace,fixture,radius))
+                {
+                    var lowestProgress=trace.ZAt(interval.Enter)<=trace.ZAt(interval.Exit)?interval.Enter:interval.Exit;var lowest=trace.ZAt(lowestProgress)+verticalOffset;
+                    if(lowest<=fixture.TopZmm+Epsilon)AddUnique(findings,new(SafetySeverity.Error,code,message,suggestion,trace.OperationId,trace.MoveIndex,trace.PointAt(lowestProgress),trace.ZAt(lowestProgress)));
+                }
+            }
+        }
+    }
+    private readonly record struct TraceInterval(double Enter,double Exit);
+    private static IReadOnlyList<TraceInterval> TraceIntervals(MotionTraceEvent trace,FixtureDefinition fixture,double radius)
+    {
+        if(trace.Kind!=MotionEventKind.Arc||trace.ArcCenter is not{} center)
+            return TryInterval(trace.Start,trace.End,fixture,radius,out var enter,out var exit)?[new(enter,exit)]:[];
+
+        var arcRadius=trace.Start.DistanceTo(center);if(arcRadius<=Epsilon)return IntersectsXY(trace.Start,radius,fixture)?[new(0,1)]:[];
+        var minimumX=fixture.MinXmm-radius;var maximumX=fixture.MaxXmm+radius;var minimumY=fixture.MinYmm-radius;var maximumY=fixture.MaxYmm+radius;
+        var startAngle=Math.Atan2(trace.Start.Y-center.Y,trace.Start.X-center.X);var sweep=MotionTraceEvent.ArcSweep(trace.Start,trace.End,center,trace.Clockwise);var breaks=new List<double>{0,1};
+        foreach(var x in new[]{minimumX,maximumX})
+        {
+            var cosine=(x-center.X)/arcRadius;if(cosine is < -1-Epsilon or > 1+Epsilon)continue;var angle=Math.Acos(Math.Clamp(cosine,-1,1));AddAngle(angle);AddAngle(-angle);
+        }
+        foreach(var y in new[]{minimumY,maximumY})
+        {
+            var sine=(y-center.Y)/arcRadius;if(sine is < -1-Epsilon or > 1+Epsilon)continue;var angle=Math.Asin(Math.Clamp(sine,-1,1));AddAngle(angle);AddAngle(Math.PI-angle);
+        }
+        var ordered=breaks.Select(value=>Math.Clamp(value,0,1)).DistinctBy(value=>Math.Round(value,12)).Order().ToArray();var intervals=new List<TraceInterval>();
+        for(var index=0;index+1<ordered.Length;index++){var from=ordered[index];var to=ordered[index+1];if(Inside(trace.PointAt((from+to)/2)))intervals.Add(new(from,to));}
+        foreach(var value in ordered.Where(value=>Inside(trace.PointAt(value))))intervals.Add(new(value,value));
+        if(intervals.Count==0)return[];var merged=new List<TraceInterval>();foreach(var interval in intervals.OrderBy(value=>value.Enter).ThenBy(value=>value.Exit)){if(merged.Count==0||interval.Enter>merged[^1].Exit+1e-10)merged.Add(interval);else merged[^1]=new(merged[^1].Enter,Math.Max(merged[^1].Exit,interval.Exit));}return merged;
+
+        bool Inside(Point2D point)=>point.X>=minimumX-Epsilon&&point.X<=maximumX+Epsilon&&point.Y>=minimumY-Epsilon&&point.Y<=maximumY+Epsilon;
+        void AddAngle(double angle)
+        {
+            var distance=sweep>=0?Normalize(angle-startAngle):Normalize(startAngle-angle);var magnitude=Math.Abs(sweep);if(distance<=magnitude+Epsilon)breaks.Add(magnitude<=Epsilon?0:distance/magnitude);
+        }
+        static double Normalize(double angle){var value=angle%(Math.PI*2);return value<0?value+Math.PI*2:value;}
     }
     private static bool TryInterval(Point2D a,Point2D b,FixtureDefinition fixture,double radius,out double enter,out double exit)
     {

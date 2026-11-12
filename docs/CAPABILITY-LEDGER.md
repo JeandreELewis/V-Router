@@ -84,7 +84,7 @@ Status meanings:
 | Canonical motion evaluation | Verified | Linear, rapid, arc, dwell, spindle and tool events produce a deterministic timed stream | Preflight/post internals must finish consuming only this event stream |
 | Playback and time estimate | Verified | Both use the canonical evaluator and selected machine rapid/tool-change timing | UI playback interaction matrix remains |
 | CPU stock simulation | Incomplete | Uses canonical interpolation for cutter motion | Shank/holder and fixture-volume simulation remain |
-| Safety preflight | Incomplete | Blocks stale/scope-mismatched/non-finite/invalid/envelope-violating programs; straight motion uses exact swept cutter/shank/holder intervals against fixtures and arcs use fine canonical subdivision | Analytic swept-arc/fixture intersection and broader physical proof fixtures remain |
+| Safety preflight | Incomplete | Blocks stale/scope-mismatched/non-finite/invalid/envelope-violating programs; straight and circular motion use exact swept cutter/shank/holder intervals against expanded fixture bounds, including sub-sample thin fixtures | Broader physical fixture proof records remain |
 | UCCNC, Mach3, Mach4, GRBL, LinuxCNC posts | Unsafe | Declarative preview definitions with controller-specific extensions, safe startup blocks, comments, capabilities and tool-change policies | All remain `CertificationPending`; controller-specific parser/simulator evidence and air-cuts are required per controller |
 | Runnable G-code saving | Unsafe | Preview generation exists; save commands require a `Certified` selected post | No built-in post is certified, so saving is visibly disabled in menu, palette and native macOS menu |
 | Multi-cutter file isolation | Verified | Safe export defaults to independent files by cutter; combined multi-cutter output requires a machine ATC plus a matching `Certified` automatic-tool-change post; conflicting tool numbers are rejected | Postprocessor and ViewModel regressions cover manual, unsupported, pending-certification and certified-ATC paths |
@@ -95,7 +95,7 @@ Status meanings:
 
 | Function | Status | Current behavior | Remaining gate |
 |---|---|---|---|
-| Tool/material/machine/preset libraries | Incomplete | Persisted models, immutable snapshots, search, tool CSV/JSON lossless exchange and dangling-preset rejection exist | Complete material/machine/preset CSV and remaining CRUD UI workflows |
+| Tool/material/machine/preset libraries | Verified | Searchable CRUD for all four library types; every tool-assembly and machine-safety dimension is exposed; matching presets seed immutable operation snapshots; complete JSON and per-type lossless CSV import/export reject dangling references and unsafe deletion | Service, ViewModel and minimum-size headless UI fixtures pass |
 | SQLite library storage | Verified | Database-backed persistence with explicit ordered schema versions | Legacy missing-column migration is covered by a real SQLite fixture |
 | Machine and fixtures | Verified | UI exposes travel, rapid/tool-change timing, spindle, holder, spoilboard, park and complete fixture bounds/clearance; finite validation feeds safety | Physical values remain the operator's responsibility |
 | Nesting | Incomplete | Enforces quantity, spacing, margins, finite dimensions, grain, permitted rotation, all-parts-placed, deterministic replacement and undo/redo restoration | Pointer-driven workflow coverage remains |

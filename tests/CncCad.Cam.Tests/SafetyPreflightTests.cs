@@ -45,6 +45,10 @@ public class SafetyPreflightTests
     {
         var (definition,program)=Program(new RapidMove(new(0,50),-1),new LinearMove(new(100,50),-1,500));definition.CutDepthMm=1;definition.Tool=CompleteTool with{DiameterMm=.1,ShankDiameterMm=.1,CuttingLengthMm=10,StickOutMm=30};var clamp=new FixtureDefinition{Name="Thin pin",MinXmm=50.21,MaxXmm=50.22,MinYmm=49.995,MaxYmm=50.005,TopZmm=0,RequiredClearanceMm=1};var result=new SafetyPreflightService().Check(new(new JobSettings{WidthMm=100,HeightMm=100,ThicknessMm=18},Machine(),[clamp],[definition],program));var collision=Assert.Single(result.Findings,finding=>finding.Code=="fixture-collision");Assert.Equal(1,collision.MoveIndex);Assert.NotNull(collision.Position);
     }
+    [Fact] public void AnalyticArcSweepFindsAThinFixtureBetweenEveryChordAndPointSample()
+    {
+        var (definition,program)=Program(new RapidMove(new(100,0),5),new LinearMove(new(100,0),-1,200),new ArcMove(new(0,100),new(0,0),-1,500,false));definition.CutDepthMm=1;definition.PassDepthMm=1;definition.Tool=CompleteTool with{DiameterMm=.0001,ShankDiameterMm=.0001,CuttingLengthMm=10,StickOutMm=30};var coordinate=100/Math.Sqrt(2);var clamp=new FixtureDefinition{Name="Arc tangent pin",MinXmm=coordinate-.000001,MaxXmm=coordinate+.000001,MinYmm=coordinate-.000001,MaxYmm=coordinate+.000001,TopZmm=0,RequiredClearanceMm=1};var result=new SafetyPreflightService().Check(new(new JobSettings{WidthMm=120,HeightMm=120,ThicknessMm=18},Machine(),[clamp],[definition],program));var collision=Assert.Single(result.Findings,finding=>finding.Code=="fixture-collision");Assert.Equal(2,collision.MoveIndex);Assert.NotNull(collision.Position);Assert.InRange(collision.Position!.Value.X,coordinate-.001,coordinate+.001);Assert.InRange(collision.Position.Value.Y,coordinate-.001,coordinate+.001);
+    }
     [Fact] public void SpoilboardAllowance_WarnsThenErrors()
     {
         var (definition,program)=Program(new LinearMove(new(50,50),-18.25,500));definition.CutDepthMm=18.25;
