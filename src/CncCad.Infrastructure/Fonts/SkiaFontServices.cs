@@ -1,3 +1,4 @@
+using System.Text;
 using CncCad.Core.Entities;
 using CncCad.Core.Geometry;
 using SkiaSharp;
@@ -28,7 +29,7 @@ public sealed class SkiaTextOutlineService:ITextOutlineService
             var measured=lines[lineIndex].EnumerateRunes().Select(rune=>{var glyphs=font.GetGlyphs(rune.ToString());var glyph=glyphs.Length==0?(ushort)0:glyphs[0];var width=glyph==0?0:font.GetGlyphWidths([glyph])[0];return(Rune:rune,Glyph:glyph,Width:width,Advance:(double)width+request.LetterSpacingMm);}).ToArray();var lineWidth=measured.Length==0?0:measured.Sum(item=>item.Advance)-request.LetterSpacingMm;var x=(float)(request.Origin.X-(request.Alignment switch{TextAlignment.Center=>lineWidth/2,TextAlignment.Right=>lineWidth,_=>0}));var y=(float)(request.Origin.Y-lineIndex*request.SizeMm*request.LineSpacing);
             foreach(var item in measured)
             {
-                using var path=item.Glyph==0?null:font.GetGlyphPath(item.Glyph);if(item.Glyph==0||path is null){warnings.Add($"Font '{request.FontFamily}' has no outline for '{item.Rune}'.");x+=(float)item.Advance;continue;}advances.Add(item.Advance);var glyphFigures=Convert(path,x,y).ToList();figures.AddRange(glyphFigures);generated.Add(new(item.Rune.ToString(),item.Advance,glyphFigures,order++));x+=(float)item.Advance;
+                using var path=item.Glyph==0?null:font.GetGlyphPath(item.Glyph);if(path is null&&Rune.IsWhiteSpace(item.Rune)){advances.Add(item.Advance);generated.Add(new(item.Rune.ToString(),item.Advance,[],order++));x+=(float)item.Advance;continue;}if(item.Glyph==0||path is null){warnings.Add($"Font '{request.FontFamily}' has no outline for '{item.Rune}'.");x+=(float)item.Advance;continue;}advances.Add(item.Advance);var glyphFigures=Convert(path,x,y).ToList();figures.AddRange(glyphFigures);generated.Add(new(item.Rune.ToString(),item.Advance,glyphFigures,order++));x+=(float)item.Advance;
             }
         }
         if(figures.Count==0)throw new InvalidOperationException($"Font '{request.FontFamily}' produced no vector outlines for this text.");return new(figures,warnings.Distinct().ToArray(),advances,FontKind.Outline,generated);
@@ -49,19 +50,44 @@ internal static class HersheyStrokeService
     private static Point2D[][]? Glyph(char c)=>c switch
     {
         'A'=>[[new(0,0),new(.3,1),new(.6,0)],[new(.12,.42),new(.48,.42)]],
+        'B'=>[[new(0,0),new(0,1),new(.42,1),new(.6,.86),new(.6,.62),new(.42,.5),new(0,.5)],[new(.42,.5),new(.6,.38),new(.6,.14),new(.42,0),new(0,0)]],
+        'C'=>[[new(.6,.85),new(.45,1),new(.15,1),new(0,.82),new(0,.18),new(.15,0),new(.45,0),new(.6,.15)]],
+        'D'=>[[new(0,0),new(0,1),new(.38,1),new(.6,.78),new(.6,.22),new(.38,0),new(0,0)]],
         'E'=>[[new(.6,1),new(0,1),new(0,0),new(.6,0)],[new(0,.5),new(.48,.5)]],
+        'F'=>[[new(0,0),new(0,1),new(.6,1)],[new(0,.5),new(.48,.5)]],
+        'G'=>[[new(.6,.82),new(.45,1),new(.15,1),new(0,.82),new(0,.18),new(.15,0),new(.48,0),new(.6,.15),new(.6,.45),new(.35,.45)]],
         'H'=>[[new(0,0),new(0,1)],[new(.6,0),new(.6,1)],[new(0,.5),new(.6,.5)]],
         'I'=>[[new(.3,0),new(.3,1)],[new(.05,1),new(.55,1)],[new(.05,0),new(.55,0)]],
+        'J'=>[[new(.05,1),new(.6,1),new(.6,.18),new(.45,0),new(.15,0),new(0,.18)]],
+        'K'=>[[new(0,0),new(0,1)],[new(.6,1),new(0,.45),new(.65,0)]],
         'L'=>[[new(0,1),new(0,0),new(.6,0)]],
+        'M'=>[[new(0,0),new(0,1),new(.3,.45),new(.6,1),new(.6,0)]],
         'N'=>[[new(0,0),new(0,1),new(.6,0),new(.6,1)]],
         'O'=>[[new(.1,0),new(0,.2),new(0,.8),new(.1,1),new(.5,1),new(.6,.8),new(.6,.2),new(.5,0),new(.1,0)]],
+        'P'=>[[new(0,0),new(0,1),new(.45,1),new(.6,.85),new(.6,.65),new(.45,.5),new(0,.5)]],
+        'Q'=>[[new(.1,0),new(0,.2),new(0,.8),new(.1,1),new(.5,1),new(.6,.8),new(.6,.2),new(.5,0),new(.1,0)],[new(.38,.25),new(.68,-.08)]],
         'R'=>[[new(0,0),new(0,1),new(.45,1),new(.6,.85),new(.6,.62),new(.45,.5),new(0,.5)],[new(.35,.5),new(.65,0)]],
         'S'=>[[new(.6,.85),new(.45,1),new(.15,1),new(0,.82),new(.6,.18),new(.45,0),new(.15,0),new(0,.15)]],
         'T'=>[[new(0,1),new(.6,1)],[new(.3,1),new(.3,0)]],
         'U'=>[[new(0,1),new(0,.2),new(.15,0),new(.45,0),new(.6,.2),new(.6,1)]],
         'V'=>[[new(0,1),new(.3,0),new(.6,1)]],
+        'W'=>[[new(0,1),new(.12,0),new(.3,.55),new(.48,0),new(.6,1)]],
         'X'=>[[new(0,1),new(.6,0)],[new(.6,1),new(0,0)]],
         'Y'=>[[new(0,1),new(.3,.5),new(.6,1)],[new(.3,.5),new(.3,0)]],
+        'Z'=>[[new(0,1),new(.6,1),new(0,0),new(.6,0)]],
+        '0'=>[[new(.1,0),new(0,.2),new(0,.8),new(.1,1),new(.5,1),new(.6,.8),new(.6,.2),new(.5,0),new(.1,0)],[new(.1,.15),new(.5,.85)]],
+        '1'=>[[new(.12,.78),new(.3,1),new(.3,0)],[new(.08,0),new(.55,0)]],
+        '2'=>[[new(0,.78),new(.15,1),new(.45,1),new(.6,.8),new(.6,.62),new(0,0),new(.6,0)]],
+        '3'=>[[new(0,.85),new(.15,1),new(.45,1),new(.6,.82),new(.45,.52),new(.6,.2),new(.45,0),new(.15,0),new(0,.15)]],
+        '4'=>[[new(.48,0),new(.48,1),new(0,.32),new(.62,.32)]],
+        '5'=>[[new(.6,1),new(0,1),new(0,.52),new(.45,.52),new(.6,.35),new(.6,.15),new(.45,0),new(.15,0),new(0,.15)]],
+        '6'=>[[new(.58,.82),new(.45,1),new(.15,1),new(0,.78),new(0,.2),new(.15,0),new(.45,0),new(.6,.2),new(.6,.4),new(.45,.55),new(0,.55)]],
+        '7'=>[[new(0,1),new(.6,1),new(.12,0)]],
+        '8'=>[[new(.15,.5),new(0,.68),new(0,.84),new(.15,1),new(.45,1),new(.6,.84),new(.6,.68),new(.45,.5),new(.15,.5),new(0,.32),new(0,.16),new(.15,0),new(.45,0),new(.6,.16),new(.6,.32),new(.45,.5)]],
+        '9'=>[[new(.6,.45),new(.15,.45),new(0,.6),new(0,.8),new(.15,1),new(.45,1),new(.6,.8),new(.6,.2),new(.45,0),new(.15,0),new(.02,.16)]],
+        '.'=>[[new(.28,0),new(.32,0)]],
+        '-'=>[[new(.08,.5),new(.52,.5)]],
+        '/'=>[[new(0,0),new(.6,1)]],
         ' '=>[],
         _=>null
     };

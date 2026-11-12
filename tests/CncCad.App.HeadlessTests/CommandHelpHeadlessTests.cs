@@ -156,6 +156,17 @@ public sealed class CommandHelpHeadlessTests
     }
 
     [AvaloniaFact]
+    public void PathTextCreateAndGroupedVectorConversionWorkAtMinimumSize()
+    {
+        var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent(),textOutlineService:new PortableFallbackTextOutlineService());vm.CreateJob(new JobSettings{Name="Path text",WidthMm=120,HeightMm=100,ThicknessMm=18});var guide=new PolylineEntity{LayerId=vm.Document.ActiveLayerId,Points=[new(10,20),new(70,20),new(70,80)]};vm.Document.Entities.Add(guide);vm.Selection.Set(guide.Id);vm.SelectionChanged();vm.TextValue="AB";vm.TextPathStart=.5;vm.OpenDesignTask(DesignTaskPage.TextShapes);var window=new MainWindow{DataContext=vm,Width=1100,Height=700};window.Show();Dispatcher.UIThread.RunJobs();
+        try
+        {
+            var create=window.GetVisualDescendants().OfType<Button>().Single(control=>control.IsVisible&&Equals(control.Content,"Create Text"));create.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();var text=Assert.IsType<TextEntity>(vm.Document.Entities.Single(entity=>entity is TextEntity));Assert.Equal(2,text.Glyphs.Count);var convert=window.GetVisualDescendants().OfType<Button>().Single(control=>control.IsVisible&&Equals(control.Content,"To Vectors"));convert.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();var vectors=vm.Document.Entities.OfType<VectorPathEntity>().ToArray();Assert.Equal(2,vectors.Length);Assert.Single(vectors.Select(vector=>vector.GroupId).Distinct());Assert.True(vm.CanUndo);
+        }
+        finally{window.Close();}
+    }
+
+    [AvaloniaFact]
     public void ExactPolylineCancelIsVisibleAtMinimumSizeAndDoesNotCreateHistoryOrGeometry()
     {
         var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent());vm.CreateJob(new JobSettings{Name="Exact polyline",WidthMm=100,HeightMm=100,ThicknessMm=18});vm.ActivePaletteItem=vm.CreationTools.Single(item=>item.Tool==CanvasTool.Polyline);vm.OpenDesignTask(DesignTaskPage.Construction);vm.Point1X=1;vm.Point1Y=2;vm.Point2X=10;vm.Point2Y=2;vm.AddNumericPolylineNode();var window=new MainWindow{DataContext=vm,Width=1100,Height=700};window.Show();Dispatcher.UIThread.RunJobs();

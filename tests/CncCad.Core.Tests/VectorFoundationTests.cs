@@ -40,13 +40,13 @@ public class VectorFoundationTests
     [Fact]
     public void DesktopFontCatalog_ProvidesSystemAndCncCenterlineFonts()
     {
-        var catalog=new DesktopFontCatalog();Assert.Contains(catalog.Fonts,x=>x.Descriptor.Kind==FontKind.SingleLine);Assert.Contains(catalog.Fonts,x=>!x.Descriptor.IsBundled);var system=catalog.Fonts.First(x=>!x.Descriptor.IsBundled);var result=new SkiaTextOutlineService().Create(new("A",system.Descriptor.Family,system.Descriptor.Style,12,0,1.2,TextAlignment.Left,new(0,0)));Assert.NotEmpty(result.Outlines);Assert.Equal(FontKind.Outline,result.Kind);
+        var catalog=new DesktopFontCatalog();Assert.Contains(catalog.Fonts,x=>x.Descriptor.Kind==FontKind.SingleLine);Assert.Contains(catalog.Fonts,x=>!x.Descriptor.IsBundled);var system=catalog.Fonts.First(x=>!x.Descriptor.IsBundled);var result=new SkiaTextOutlineService().Create(new("A A",system.Descriptor.Family,system.Descriptor.Style,12,0,1.2,TextAlignment.Left,new(0,0)));Assert.NotEmpty(result.Outlines);Assert.Equal(FontKind.Outline,result.Kind);Assert.DoesNotContain(result.Warnings,warning=>warning.Contains("' '",StringComparison.Ordinal));Assert.Equal(3,result.Glyphs!.Count);Assert.Empty(result.Glyphs[1].Figures);
     }
 
     [Fact]
     public void HersheyText_ProducesOpenEngravingStrokes()
     {
-        var result=new SkiaTextOutlineService().Create(new("ROUTER","Hershey Simplex","Regular",10,1,1.2,TextAlignment.Left,new(0,0)));Assert.Equal(FontKind.SingleLine,result.Kind);Assert.NotEmpty(result.Outlines);Assert.All(result.Outlines,x=>Assert.False(x.IsClosed));Assert.Equal(6,result.GlyphAdvancesMm!.Count);
+        var text="ABCDEFGHIJKLMNOPQRSTUVWXYZ 0123456789.-/";var result=new SkiaTextOutlineService().Create(new(text,"Hershey Simplex","Regular",10,1,1.2,TextAlignment.Left,new(0,0)));Assert.Equal(FontKind.SingleLine,result.Kind);Assert.NotEmpty(result.Outlines);Assert.All(result.Outlines,x=>Assert.False(x.IsClosed));Assert.Equal(text.Length,result.GlyphAdvancesMm!.Count);Assert.Equal(text.Length,result.Glyphs!.Count);Assert.Empty(result.Warnings);
     }
     [Fact]
     public void TextAlignmentMultilineLayoutAndMissingGlyphWarningsAreApplied()
@@ -58,6 +58,14 @@ public class VectorFoundationTests
     public void TextPathLayout_FitsNativeCurvesAndPreservesPortableSource()
     {
         var source=new[]{new VectorPathFigure{Start=new(0,0),IsClosed=true,Segments=[new CubicPathSegment(new(2,0),new(3,4),new(5,4)),new LinePathSegment(new(0,0))]}};var guide=Enumerable.Range(0,33).Select(i=>new Point2D(50+30*Math.Cos(i*Math.PI/32),50+30*Math.Sin(i*Math.PI/32))).ToArray();var placement=new TextPathPlacement{BaselineOffsetMm=3,FitMode=TextFitMode.Natural};var fitted=TextPathLayout.Fit(source,guide,placement);Assert.Single(fitted);Assert.IsType<CubicPathSegment>(fitted[0].Segments[0]);Assert.NotEqual(source[0].Start,fitted[0].Start);
+    }
+
+    [Fact]
+    public void TextPathLayoutCentersAtHalfPathAndKeepsEachGlyphRigid()
+    {
+        var outer=new VectorPathFigure{Start=new(0,0),IsClosed=true,Segments=[new LinePathSegment(new(20,0)),new LinePathSegment(new(20,10)),new LinePathSegment(new(0,10))]};var hole=new VectorPathFigure{Start=new(3,3),IsClosed=true,Segments=[new LinePathSegment(new(7,3)),new LinePathSegment(new(7,7)),new LinePathSegment(new(3,7))]};var second=new VectorPathFigure{Start=new(30,0),Segments=[new LinePathSegment(new(40,10))]};var placement=new TextPathPlacement{StartOffset=.5};var centered=TextPathLayout.FitGlyphs([[outer,hole],[second]],[new(0,0),new(100,0)],placement);var allBounds=VectorPathGeometry.Bounds(centered.SelectMany(group=>group),Matrix2D.Identity);Assert.Equal(50,(allBounds.MinX+allBounds.MaxX)/2,6);
+        var guide=new[]{new Point2D(0,0),new Point2D(50,0),new Point2D(50,50)};var placed=TextPathLayout.FitGlyphs([[outer,hole]],guide,placement);var originalVector=hole.Start-outer.Start;var placedVector=placed[0][1].Start-placed[0][0].Start;Assert.Equal(originalVector.Length,placedVector.Length,6);Assert.Equal(outer.Segments.Count,placed[0][0].Segments.Count);Assert.Equal(hole.Segments.Count,placed[0][1].Segments.Count);
+        Assert.Throws<ArgumentException>(()=>TextPathLayout.FitGlyphs([[outer]],guide,new(){StartOffset=double.NaN}));
     }
 
     [Fact]
