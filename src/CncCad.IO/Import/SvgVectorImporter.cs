@@ -20,25 +20,14 @@ public sealed class SvgVectorImporter:IVectorImportService
         return new(entities,layers,entities.Count==0?new(0,0,0,0):BoundingBox.FromPoints(entities.SelectMany(e=>new[]{new Point2D(e.GetBounds().MinX,e.GetBounds().MinY),new Point2D(e.GetBounds().MaxX,e.GetBounds().MaxY)})),unit,warnings,[..unsupported],unsupportedDetails,viewport.AppliedScale,approximations);
         void Visit(XElement element,Guid layerId,Matrix2D inherited,bool referenced=false)
         {
-            var name=element.Name.LocalName.ToLowerInvariant();if(name=="defs"&&!referenced)return;var display=(string?)element.Attribute("display");var visibility=(string?)element.Attribute("visibility");var style=(string?)element.Attribute("style");if(!request.IncludeHidden&&(string.Equals(display,"none",StringComparison.OrdinalIgnoreCase)||string.Equals(visibility,"hidden",StringComparison.OrdinalIgnoreCase)||HasHiddenStyle(style)))return;
+            var name=element.Name.LocalName.ToLowerInvariant();if((name=="defs"||name=="symbol")&&!referenced)return;var display=(string?)element.Attribute("display");var visibility=(string?)element.Attribute("visibility");var style=(string?)element.Attribute("style");if(!request.IncludeHidden&&(string.Equals(display,"none",StringComparison.OrdinalIgnoreCase)||string.Equals(visibility,"hidden",StringComparison.OrdinalIgnoreCase)||HasHiddenStyle(style)))return;
             var transform=Matrix2D.Then(ParseTransform((string?)element.Attribute("transform")),inherited);
             if(name=="use")
             {
                 var reference=element.Attributes().FirstOrDefault(attribute=>attribute.Name.LocalName=="href")?.Value;var id=reference?.StartsWith('#')==true?reference[1..]:null;if(string.IsNullOrWhiteSpace(id)||!definitions.TryGetValue(id,out var definition)||!activeUses.Add(id)){AddUnsupported(element,string.IsNullOrWhiteSpace(id)?"use":$"use:{id}");return;}try{var translated=Matrix2D.Then(Matrix2D.Translation(AttributeNumber(element,"x"),AttributeNumber(element,"y")),transform);Visit(definition,layerId,translated,true);}finally{activeUses.Remove(id);}return;
             }
             if(name=="g"&&request.PreserveLayers){var label=(string?)element.Attributes().FirstOrDefault(a=>a.Name.LocalName is "label" or "id");if(!string.IsNullOrWhiteSpace(label)){var layer=Layer(label);layers.Add(layer);layerId=layer.Id;}}
-            CadEntity? entity=name switch
-            {
-                "line"=>new LineEntity{Start=P("x1","y1"),End=P("x2","y2")},
-                "polyline"=>new PolylineEntity{Points=Points((string?)element.Attribute("points")),IsClosed=false},
-                "polygon"=>new PolylineEntity{Points=Points((string?)element.Attribute("points")),IsClosed=true},
-                "rect" when N("rx")<=0&&N("ry")<=0=>new RectangleEntity{Origin=P("x","y"),Width=N("width"),Height=N("height")},
-                "rect"=>RoundedRectangle(P("x","y"),N("width"),N("height"),Math.Max(N("rx"),N("ry"))),
-                "circle"=>new CircleEntity{Center=P("cx","cy"),Radius=N("r")},
-                "ellipse"=>new EllipseEntity{Center=P("cx","cy"),RadiusX=N("rx"),RadiusY=N("ry")},
-                "path"=>ParsePath((string?)element.Attribute("d"),warnings,approximations),
-                _=>null
-            };
+            CadEntity? entity;try{entity=name switch{"line"=>new LineEntity{Start=P("x1","y1"),End=P("x2","y2")},"polyline"=>new PolylineEntity{Points=Points((string?)element.Attribute("points")),IsClosed=false},"polygon"=>new PolylineEntity{Points=Points((string?)element.Attribute("points")),IsClosed=true},"rect" when N("rx")<=0&&N("ry")<=0=>new RectangleEntity{Origin=P("x","y"),Width=N("width"),Height=N("height")},"rect"=>RoundedRectangle(P("x","y"),N("width"),N("height"),element.Attribute("rx") is null?N("ry"):N("rx"),element.Attribute("ry") is null?N("rx"):N("ry")),"circle"=>new CircleEntity{Center=P("cx","cy"),Radius=N("r")},"ellipse"=>new EllipseEntity{Center=P("cx","cy"),RadiusX=N("rx"),RadiusY=N("ry")},"path"=>ParsePath((string?)element.Attribute("d"),warnings,approximations),_=>null};}catch(Exception exception)when(exception is InvalidDataException or IndexOutOfRangeException or FormatException or OverflowException){AddUnsupported(element,name);warnings.Add(new("svg-path-invalid",$"Invalid SVG path data was skipped: {exception.Message}"));return;}
             if(entity is not null&&Usable(entity,transform)){if(name=="rect"&&(N("rx")>0||N("ry")>0))AddApproximation("svg-rounded-rectangle-cubic","Rounded SVG rectangle corners were represented by cubic Bézier segments.");entity.LayerId=layerId;entity.Transform=transform;entities.Add(entity);}else if(entity is not null){AddUnsupported(element,name);if(warnings.All(item=>item.Code!="svg-degenerate"))warnings.Add(new("svg-degenerate","Collapsed or non-finite SVG geometry was skipped."));}else if(name is not("svg" or "g" or "defs" or "symbol" or "title" or "desc"))AddUnsupported(element,name);
             foreach(var child in element.Elements())Visit(child,layerId,transform,referenced);
             double N(string attribute)=>double.TryParse((string?)element.Attribute(attribute),NumberStyles.Float,CultureInfo.InvariantCulture,out var v)?v:0;
@@ -71,13 +60,13 @@ public sealed class SvgVectorImporter:IVectorImportService
     }
     private static CadLayer Layer(string name)=>new(){Name=name};
     private static ImportUnit DetectUnit(string? value){var unit=Regex.Match(value??"",@"[a-zA-Z]+\s*$").Value.ToLowerInvariant();return unit switch{"in"=>ImportUnit.Inches,"px"=>ImportUnit.Pixels,"mm"=>ImportUnit.Millimetres,"cm"=>ImportUnit.Centimetres,"pt" or "pc"=>ImportUnit.Pixels,""=>ImportUnit.Unitless,_=>ImportUnit.Pixels};}
-    private static VectorPathEntity RoundedRectangle(Point2D origin,double width,double height,double radius)
+    private static VectorPathEntity RoundedRectangle(Point2D origin,double width,double height,double radiusX,double radiusY)
     {
-        var r=Math.Clamp(radius,0,Math.Min(Math.Abs(width),Math.Abs(height))/2);var k=.5522847498307936;
-        return new(){Figures=[new(){Start=new(origin.X+r,origin.Y),IsClosed=true,Segments=[new LinePathSegment(new(origin.X+width-r,origin.Y)),new CubicPathSegment(new(origin.X+width-r+k*r,origin.Y),new(origin.X+width,origin.Y+r-k*r),new(origin.X+width,origin.Y+r)),new LinePathSegment(new(origin.X+width,origin.Y+height-r)),new CubicPathSegment(new(origin.X+width,origin.Y+height-r+k*r),new(origin.X+width-r+k*r,origin.Y+height),new(origin.X+width-r,origin.Y+height)),new LinePathSegment(new(origin.X+r,origin.Y+height)),new CubicPathSegment(new(origin.X+r-k*r,origin.Y+height),new(origin.X,origin.Y+height-r+k*r),new(origin.X,origin.Y+height-r)),new LinePathSegment(new(origin.X,origin.Y+r)),new CubicPathSegment(new(origin.X,origin.Y+r-k*r),new(origin.X+r-k*r,origin.Y),new(origin.X+r,origin.Y))]}]};
+        var rx=Math.Clamp(radiusX,0,Math.Abs(width)/2);var ry=Math.Clamp(radiusY,0,Math.Abs(height)/2);var k=.5522847498307936;
+        return new(){Figures=[new(){Start=new(origin.X+rx,origin.Y),IsClosed=true,Segments=[new LinePathSegment(new(origin.X+width-rx,origin.Y)),new CubicPathSegment(new(origin.X+width-rx+k*rx,origin.Y),new(origin.X+width,origin.Y+ry-k*ry),new(origin.X+width,origin.Y+ry)),new LinePathSegment(new(origin.X+width,origin.Y+height-ry)),new CubicPathSegment(new(origin.X+width,origin.Y+height-ry+k*ry),new(origin.X+width-rx+k*rx,origin.Y+height),new(origin.X+width-rx,origin.Y+height)),new LinePathSegment(new(origin.X+rx,origin.Y+height)),new CubicPathSegment(new(origin.X+rx-k*rx,origin.Y+height),new(origin.X,origin.Y+height-ry+k*ry),new(origin.X,origin.Y+height-ry)),new LinePathSegment(new(origin.X,origin.Y+ry)),new CubicPathSegment(new(origin.X,origin.Y+ry-k*ry),new(origin.X+rx-k*rx,origin.Y),new(origin.X+rx,origin.Y))]}]};
     }
     private static List<Point2D> Points(string? value){var n=Numbers(value);var result=new List<Point2D>();for(var i=0;i+1<n.Count;i+=2)result.Add(new(n[i],n[i+1]));return result;}
-    private static readonly Regex TokenRegex=new(@"[AaCcHhLlMmQqSsTtVvZz]|[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?",RegexOptions.Compiled);
+    private static readonly Regex TokenRegex=new(@"[A-Za-z]|[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?",RegexOptions.Compiled);
     private static List<double> Numbers(string? value)=>Regex.Matches(value??"",@"[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?").Select(x=>double.Parse(x.Value,CultureInfo.InvariantCulture)).ToList();
     private static double NumberValue(string? value)=>Numbers(value).FirstOrDefault();
     internal static VectorPathEntity ParsePath(string? data,List<ImportWarning>? warnings=null,List<ImportWarning>? approximations=null)

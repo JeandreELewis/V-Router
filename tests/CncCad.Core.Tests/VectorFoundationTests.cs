@@ -188,6 +188,18 @@ public class VectorFoundationTests
     }
 
     [Fact]
+    public void SvgSupportedPrimitiveMatrixPreservesEllipticalRoundedCornersAndRejectsUnknownPathCommands()
+    {
+        const string svg="""<svg xmlns="http://www.w3.org/2000/svg" width="120mm" height="80mm" viewBox="0 0 120 80"><symbol id="unused"><line x1="0" y1="0" x2="99" y2="99"/></symbol><line x1="1" y1="1" x2="10" y2="1"/><polyline points="1,5 5,8 10,5"/><polygon points="15,5 20,8 25,5"/><rect x="30" y="5" width="15" height="10"/><rect x="50" y="5" width="20" height="15" rx="8" ry="3"/><circle cx="80" cy="12" r="6"/><ellipse cx="100" cy="12" rx="8" ry="4"/><path d="M 10 30 C 20 20 30 40 40 30 Q 50 20 60 30 Z"/><path d="M 70 30 R 80 40 90 30"/></svg>""";using var stream=new MemoryStream(Encoding.UTF8.GetBytes(svg));var result=new SvgVectorImporter().Import(new("matrix.svg",stream));Assert.Equal(8,result.Entities.Count);Assert.Contains(result.Entities,entity=>entity is LineEntity);Assert.Equal(2,result.Entities.OfType<PolylineEntity>().Count());Assert.Contains(result.Entities,entity=>entity is RectangleEntity);Assert.Contains(result.Entities,entity=>entity is CircleEntity);Assert.Contains(result.Entities,entity=>entity is EllipseEntity);var rounded=result.Entities.OfType<VectorPathEntity>().Single(entity=>entity.Figures[0].Start.X>45);var corner=Assert.IsType<CubicPathSegment>(rounded.Figures[0].Segments[1]);Assert.Equal(70,corner.End.X,6);Assert.Equal(8,corner.End.Y,6);Assert.Contains("path",result.Unsupported);Assert.Contains(result.Warnings,warning=>warning.Code=="svg-path-invalid");Assert.DoesNotContain(result.Entities,entity=>entity.GetBounds().MaxX>=99&&entity.GetBounds().MaxY>=79);
+    }
+
+    [Fact]
+    public void DxfPartialEllipseAndNonzeroZAreExplicitDeterministicApproximations()
+    {
+        const string dxf="0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nELLIPSE\n8\nCut\n10\n0\n20\n0\n30\n2\n11\n10\n21\n0\n31\n0\n40\n0.5\n41\n0\n42\n1.5707963267948966\n0\nENDSEC\n0\nEOF\n";using var stream=new MemoryStream(Encoding.ASCII.GetBytes(dxf));var result=new DxfVectorImporter().Import(new("ellipse-arc.dxf",stream));var arc=Assert.IsType<PolylineEntity>(Assert.Single(result.Entities));Assert.False(arc.IsClosed);Assert.True(arc.Points.Count>8);Assert.Equal(new Point2D(10,0),arc.Points[0]);Assert.Equal(0,arc.Points[^1].X,6);Assert.Equal(5,arc.Points[^1].Y,6);Assert.Contains(result.Approximations,item=>item.Code=="dxf-ellipse-arc-sampled");Assert.Contains(result.Approximations,item=>item.Code=="dxf-z-projection");
+    }
+
+    [Fact]
     public void RepairPreview_DetectsDuplicatesAndCleansTinyNodesWithoutMutation()
     {
         var layer=Guid.NewGuid();var a=new PolylineEntity{LayerId=layer,Points=[new(0,0),new(.001,0),new(10,0),new(10,10)],IsClosed=false};var duplicate=(PolylineEntity)EntityGeometry.Clone(a);
