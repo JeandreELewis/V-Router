@@ -175,6 +175,33 @@ public sealed class ProductionWorkflowTests
     }
 
     [Fact]
+    public void ConcaveNestedPocketMatrixKeepsTheSweptCutterInsideMachinableMaterial()
+    {
+        for(var fixture=0;fixture<6;fixture++)
+        foreach(var strategy in new[]{PocketStrategy.Offset,PocketStrategy.Raster})
+        foreach(var direction in new[]{CutDirection.Climb,CutDirection.Conventional})
+        {
+            var width=90+fixture*4;var height=72+fixture*3;var transform=Matrix2D.Then(Matrix2D.Scale(fixture%2==0?-1:1,1),Matrix2D.Then(Matrix2D.Rotation(-19+fixture*7),Matrix2D.Translation(220+fixture*15,130-fixture*4)));
+            var outer=new PolylineEntity{IsClosed=true,Points=[new(0,0),new(width,0),new(width,40),new(58,40),new(58,height),new(0,height)],Transform=transform};
+            var hole=new RectangleEntity{Origin=new(10,8),Width=36,Height=24,Transform=transform};
+            var nestedCutRegion=new RectangleEntity{Origin=new(20,15),Width=16,Height=10,Transform=transform};
+            var definition=new PocketOperationDefinition{GeometryIds=[outer.Id,hole.Id,nestedCutRegion.Id],Tool=Tool(),Strategy=strategy,Direction=direction,EntryMode=PocketEntryMode.LinearRamp,RampLengthMm=18,AllowanceMm=.5,CutDepthMm=4,PassDepthMm=2,StepOverMm=3,SafeZMm=5,FeedRateMmPerMin=1000,PlungeRateMmPerMin=250,SpindleRpm=18000};
+            var geometry=new Dictionary<Guid,CadEntity>{{outer.Id,outer},{hole.Id,hole},{nestedCutRegion.Id,nestedCutRegion}};var calculator=new PocketOperationCalculator();var first=calculator.Calculate(definition,geometry);var second=calculator.Calculate(definition,geometry);
+            Assert.True(first.Success,$"Fixture {fixture}, {strategy}, {direction}: {string.Join("; ",first.Errors.Select(error=>error.Message))}");
+            Assert.Equal(first.Toolpath!.Moves,second.Toolpath!.Moves);
+            var contours=new[]{outer.Points.Select(transform.Transform).ToArray(),hole.Corners.Select(transform.Transform).ToArray(),nestedCutRegion.Corners.Select(transform.Transform).ToArray()};var clearance=definition.Tool.DiameterMm/2+definition.AllowanceMm;
+            var evaluation=MotionEvaluator.Evaluate(new(){Operations=[first.Toolpath]},new(5000));Assert.True(evaluation.Success);
+            foreach(var trace in evaluation.Events.Where(trace=>trace.Kind is MotionEventKind.Linear or MotionEventKind.Arc&&Math.Min(trace.StartZ,trace.EndZ)<=0))
+            for(var sample=0;sample<=48;sample++)
+            {
+                var point=trace.PointAt(sample/48d);
+                Assert.True(CutterCenterIsSafe(point,contours,clearance),$"Fixture {fixture}, {strategy}, {direction}: unsafe cutter center {point} at move {trace.MoveIndex}.");
+            }
+            Assert.All(evaluation.Events.Where(trace=>trace.Kind==MotionEventKind.Rapid&&trace.StartZ<0),trace=>Assert.Equal(trace.Start,trace.End));
+        }
+    }
+
+    [Fact]
     public void ProfileSupportsArcLeadsOnionSkinFinishAndSquareTabs()
     {
         var rectangle=new RectangleEntity{Width=100,Height=60};var definition=new ProfileOperationDefinition{GeometryIds=[rectangle.Id],Tool=Tool(),Side=ProfileSide.Outside,LeadStyle=ProfileLeadStyle.Arc,LeadInLengthMm=5,LeadOutLengthMm=5,OnionSkinMm=.5,FinishPassEnabled=true,CutDepthMm=7,PassDepthMm=3,SafeZMm=5,FeedRateMmPerMin=1000,PlungeRateMmPerMin=250,SpindleRpm=18000,Tabs=new(){Enabled=true,Style=TabStyle.Square,AutomaticCount=2,WidthMm=8,RemainingHeightMm=2,RampLengthMm=4,ExclusionDistanceMm=1}};var result=new ProfileOperationCalculator().Calculate(definition,new Dictionary<Guid,CadEntity>{{rectangle.Id,rectangle}});
@@ -242,6 +269,6 @@ public sealed class ProductionWorkflowTests
 
     private static bool CutterCenterIsSafe(Point2D point,IReadOnlyList<Point2D>[] contours,double radius)
     {
-        static double Distance(Point2D point,Point2D start,Point2D end){var delta=end-start;var length=delta.X*delta.X+delta.Y*delta.Y;var offset=point-start;var fraction=length<=1e-18?0:Math.Clamp((offset.X*delta.X+offset.Y*delta.Y)/length,0,1);return point.DistanceTo(new(start.X+delta.X*fraction,start.Y+delta.Y*fraction));}static bool Contains(IReadOnlyList<Point2D> polygon,Point2D point){var inside=false;for(int index=0,previous=polygon.Count-1;index<polygon.Count;previous=index++)if((polygon[index].Y>point.Y)!=(polygon[previous].Y>point.Y)&&point.X<(polygon[previous].X-polygon[index].X)*(point.Y-polygon[index].Y)/(polygon[previous].Y-polygon[index].Y)+polygon[index].X)inside=!inside;return inside;}if(contours.Count(contour=>Contains(contour,point))%2==0)return false;return contours.SelectMany(contour=>Enumerable.Range(0,contour.Count).Select(index=>Distance(point,contour[index],contour[(index+1)%contour.Count]))).Min()>=radius-1e-6;
+        static double Distance(Point2D point,Point2D start,Point2D end){var delta=end-start;var length=delta.X*delta.X+delta.Y*delta.Y;var offset=point-start;var fraction=length<=1e-18?0:Math.Clamp((offset.X*delta.X+offset.Y*delta.Y)/length,0,1);return point.DistanceTo(new(start.X+delta.X*fraction,start.Y+delta.Y*fraction));}static bool Contains(IReadOnlyList<Point2D> polygon,Point2D point){var inside=false;for(int index=0,previous=polygon.Count-1;index<polygon.Count;previous=index++)if((polygon[index].Y>point.Y)!=(polygon[previous].Y>point.Y)&&point.X<(polygon[previous].X-polygon[index].X)*(point.Y-polygon[index].Y)/(polygon[previous].Y-polygon[index].Y)+polygon[index].X)inside=!inside;return inside;}if(contours.Count(contour=>Contains(contour,point))%2==0)return false;return contours.SelectMany(contour=>Enumerable.Range(0,contour.Count).Select(index=>Distance(point,contour[index],contour[(index+1)%contour.Count]))).Min()>=radius-2e-6;
     }
 }
