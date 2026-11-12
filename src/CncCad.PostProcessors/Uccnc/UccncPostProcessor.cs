@@ -52,29 +52,13 @@ public class DeclarativeGCodePostProcessor(PostDefinition definition) : IPostPro
         var result=new List<PostProcessDiagnostic>();
         if(request.PostDefinition.Id!=Definition.Id)result.Add(new(PostDiagnosticSeverity.Error,"post-mismatch","The request post definition does not match the selected postprocessor."));
         if(request.Program.Operations.Count==0)result.Add(new(PostDiagnosticSeverity.Error,"empty","The G-code program contains no toolpath operations."));
-        foreach(var operation in request.Program.Operations)
-            foreach(var error in OperationNumerics.ValidateMoves(operation))
-                result.Add(new(PostDiagnosticSeverity.Error,error.Code,error.Message));
-        foreach(var operation in request.Program.Operations)
-        {
-            var positioned=false;
-            for(var index=0;index<operation.Moves.Count;index++)
-            {
-                switch(operation.Moves[index])
-                {
-                    case RapidMove or LinearMove:positioned=true;break;
-                    case ArcMove when !positioned:result.Add(new(PostDiagnosticSeverity.Error,"arc-start",$"{operation.Name}: arc move {index+1} has no preceding positioned move."));break;
-                    case ArcMove:positioned=true;break;
-                    case SpindleStart spindle when spindle.Rpm>request.MachineSnapshot.MaximumSpindleRpm:result.Add(new(PostDiagnosticSeverity.Error,"spindle-limit",$"{operation.Name}: spindle speed exceeds the machine limit."));break;
-                }
-            }
-        }
+        var motion=MotionEvaluator.Evaluate(request.Program,new(request.MachineSnapshot.RapidRateMmPerMin));foreach(var error in motion.Diagnostics)result.Add(new(PostDiagnosticSeverity.Error,error.Code,error.Message));foreach(var trace in motion.Events.Where(trace=>trace.Kind==MotionEventKind.SpindleStart&&trace.Source is SpindleStart spindle&&spindle.Rpm>request.MachineSnapshot.MaximumSpindleRpm))result.Add(new(PostDiagnosticSeverity.Error,"spindle-limit",$"{trace.OperationName}: spindle speed exceeds the machine limit."));
         if(request.MachineSnapshot.MaximumSpindleRpm<=0)result.Add(new(PostDiagnosticSeverity.Error,"machine","The machine spindle limit is invalid."));
         if(!double.IsFinite(request.MachineSnapshot.SafeZMm)||!double.IsFinite(request.MachineSnapshot.WorkZeroDocumentXmm)||!double.IsFinite(request.MachineSnapshot.WorkZeroDocumentYmm)||!double.IsFinite(request.MachineSnapshot.WorkZeroZOffsetMm))result.Add(new(PostDiagnosticSeverity.Error,"machine-numeric","Machine datum and safe-Z values must be finite."));
         if(request.MachineSnapshot.ParkEnabled&&(!double.IsFinite(request.MachineSnapshot.ParkXmm)||!double.IsFinite(request.MachineSnapshot.ParkYmm)))result.Add(new(PostDiagnosticSeverity.Error,"park-invalid","Enabled machine-coordinate parking requires finite X and Y values."));
-        if(request.Program.Operations.SelectMany(x=>x.Moves).Any(x=>x is ArcMove)&&(!Definition.Capabilities.HasFlag(PostCapability.Arcs)||Definition.ArcMode==PostArcMode.Unsupported))result.Add(new(PostDiagnosticSeverity.Error,"unsupported-arcs",$"{Definition.DisplayName} does not support arc output."));
-        if(request.Program.Operations.SelectMany(x=>x.Moves).Any(x=>x is DwellMove)&&!Definition.Capabilities.HasFlag(PostCapability.Dwell))result.Add(new(PostDiagnosticSeverity.Error,"unsupported-dwell",$"{Definition.DisplayName} does not support dwell commands."));
-        var toolChanges=request.Program.Operations.SelectMany(x=>x.Moves).OfType<ToolChange>().ToArray();
+        if(motion.Events.Any(trace=>trace.Kind==MotionEventKind.Arc)&&(!Definition.Capabilities.HasFlag(PostCapability.Arcs)||Definition.ArcMode==PostArcMode.Unsupported))result.Add(new(PostDiagnosticSeverity.Error,"unsupported-arcs",$"{Definition.DisplayName} does not support arc output."));
+        if(motion.Events.Any(trace=>trace.Kind==MotionEventKind.Dwell)&&!Definition.Capabilities.HasFlag(PostCapability.Dwell))result.Add(new(PostDiagnosticSeverity.Error,"unsupported-dwell",$"{Definition.DisplayName} does not support dwell commands."));
+        var toolChanges=motion.Events.Where(trace=>trace.Kind==MotionEventKind.ToolChange).Select(trace=>(ToolChange)trace.Source).ToArray();
         var tools=toolChanges.Select(x=>x.ToolNumber).Distinct().ToArray();
         if(tools.Any(x=>x is null or <=0))result.Add(new(PostDiagnosticSeverity.Error,"invalid-tool","Every exported tool requires a positive tool number."));
         var operationTools=request.Program.Operations.Select(operation=>(operation.ToolId,Change:operation.Moves.OfType<ToolChange>().FirstOrDefault())).Where(x=>x.Change?.ToolNumber is>0).ToArray();
@@ -82,7 +66,7 @@ public class DeclarativeGCodePostProcessor(PostDefinition definition) : IPostPro
         if(reusedNumber is not null)result.Add(new(PostDiagnosticSeverity.Error,"duplicate-tool-number",$"Tool number T{reusedNumber.Key} is assigned to more than one cutter. Assign a unique number to every different cutter."));
         if(request.ExportScope==PostExportScope.Combined&&tools.Length>1)
             result.Add(new(PostDiagnosticSeverity.Error,"multi-tool-file-unsafe","A runnable machine file may contain only one cutter. Export separate files per tool."));
-        if(!request.MachineSnapshot.SupportsArcs&&request.Program.Operations.SelectMany(x=>x.Moves).Any(x=>x is ArcMove))result.Add(new(PostDiagnosticSeverity.Error,"machine-arcs","The selected machine profile does not allow arcs."));
+        if(!request.MachineSnapshot.SupportsArcs&&motion.Events.Any(trace=>trace.Kind==MotionEventKind.Arc))result.Add(new(PostDiagnosticSeverity.Error,"machine-arcs","The selected machine profile does not allow arcs."));
         if(request.MachineSnapshot.ControllerFamily!=ControllerFamily.Community&&request.MachineSnapshot.ControllerFamily!=Definition.ControllerFamily)result.Add(new(PostDiagnosticSeverity.Error,"controller-family",$"The {request.MachineSnapshot.ControllerFamily} machine profile is not compatible with the {Definition.DisplayName} post."));
         if(Definition.CertificationStatus!=PostCertificationStatus.Certified)result.Add(new(PostDiagnosticSeverity.Warning,"uncertified",$"{Definition.DisplayName} is {Definition.CertificationStatus.ToString().ToLowerInvariant()}; verify with an air cut before machining."));
         return result;
@@ -103,15 +87,13 @@ public class DeclarativeGCodePostProcessor(PostDefinition definition) : IPostPro
         var output=new StringBuilder();output.AppendLine(Comment($"Generated by V-Router - {program.Name}"));
         if(Definition.EmitUnitCode)output.AppendLine(unit==MeasurementUnit.Inches?"G20":"G21");
         foreach(var line in Definition.HeaderLines)output.AppendLine(line);
-        Point2D? current=null;var spindle=false;int? activeTool=null;output.AppendLine($"G0 Z{N(Z(machine.SafeZMm))}");
-        foreach(var operation in program.Operations)
+        var motion=MotionEvaluator.Evaluate(program,new(machine.RapidRateMmPerMin));if(!motion.Success)throw new InvalidDataException(string.Join(" ",motion.Diagnostics.Select(diagnostic=>diagnostic.Message)));var spindle=false;int? activeTool=null;output.AppendLine($"G0 Z{N(Z(machine.SafeZMm))}");
+        foreach(var trace in motion.Events)
         {
-            output.AppendLine(Comment(operation.Name));
-            foreach(var move in operation.Moves)
+            if(trace.MoveIndex==0)output.AppendLine(Comment(trace.OperationName));
+            switch(trace.Kind)
             {
-                switch(move)
-                {
-                    case ToolChange tool:
+                    case MotionEventKind.ToolChange when trace.Source is ToolChange tool:
                         if(activeTool==tool.ToolNumber)break;
                         output.AppendLine($"G0 Z{N(Z(machine.SafeZMm))}");if(spindle){output.AppendLine("M5");spindle=false;}
                         if(scope==PostExportScope.SeparateByTool)output.AppendLine(Comment($"Load T{tool.ToolNumber} {tool.ToolName}"));
@@ -119,22 +101,16 @@ public class DeclarativeGCodePostProcessor(PostDefinition definition) : IPostPro
                         else if(machine.ToolChangeMode==MachineToolChangeMode.ManualPause){output.AppendLine(Comment($"Load T{tool.ToolNumber} {tool.ToolName}"));output.AppendLine("M0");}
                         activeTool=tool.ToolNumber;
                         break;
-                    case SpindleStart start when start.Rpm<=0||start.Rpm>machine.MaximumSpindleRpm:throw new InvalidDataException("Spindle RPM is outside the machine limits.");
-                    case SpindleStart start:output.AppendLine($"M3 S{start.Rpm}");spindle=true;break;
-                    case SpindleStop:output.AppendLine("M5");spindle=false;break;
-                    case DwellMove dwell when !double.IsFinite(dwell.Seconds)||dwell.Seconds<=0:throw new InvalidDataException("Dwell time must be positive and finite.");
-                    case DwellMove dwell:output.AppendLine($"G4 P{dwell.Seconds.ToString($"F{Definition.Precision}",CultureInfo.InvariantCulture)}");break;
-                    case RapidMove rapid:current=rapid.End;output.AppendLine($"G0 X{N(X(rapid.End.X))} Y{N(Y(rapid.End.Y))} Z{N(Z(rapid.Z))}");break;
-                    case LinearMove linear when linear.FeedRate<=0:throw new InvalidDataException("Linear move feed rate must be positive.");
-                    case LinearMove linear:current=linear.End;output.AppendLine($"G1 X{N(X(linear.End.X))} Y{N(Y(linear.End.Y))} Z{N(Z(linear.Z))} F{N(linear.FeedRate)}");break;
-                    case ArcMove when current is null:throw new InvalidDataException("An arc move must follow a positioned move.");
-                    case ArcMove arc when arc.FeedRate<=0:throw new InvalidDataException("Arc feed rate must be positive.");
-                    case ArcMove arc:
-                        var i=Definition.ArcMode==PostArcMode.IncrementalIj?arc.Center.X-current.Value.X:X(arc.Center.X);
-                        var j=Definition.ArcMode==PostArcMode.IncrementalIj?arc.Center.Y-current.Value.Y:Y(arc.Center.Y);
-                        output.AppendLine($"G{(arc.Clockwise?2:3)} X{N(X(arc.End.X))} Y{N(Y(arc.End.Y))} Z{N(Z(arc.Z))} I{N(i)} J{N(j)} F{N(arc.FeedRate)}");current=arc.End;break;
-                    case ToolpathMove unsupported:throw new InvalidDataException($"Unsupported toolpath move '{unsupported.GetType().Name}'.");
-                }
+                    case MotionEventKind.SpindleStart when trace.Source is SpindleStart start:output.AppendLine($"M3 S{start.Rpm}");spindle=true;break;
+                    case MotionEventKind.SpindleStop:output.AppendLine("M5");spindle=false;break;
+                    case MotionEventKind.Dwell when trace.Source is DwellMove dwell:output.AppendLine($"G4 P{dwell.Seconds.ToString($"F{Definition.Precision}",CultureInfo.InvariantCulture)}");break;
+                    case MotionEventKind.Rapid:output.AppendLine($"G0 X{N(X(trace.End.X))} Y{N(Y(trace.End.Y))} Z{N(Z(trace.EndZ))}");break;
+                    case MotionEventKind.Linear when trace.Source is LinearMove linear:output.AppendLine($"G1 X{N(X(trace.End.X))} Y{N(Y(trace.End.Y))} Z{N(Z(trace.EndZ))} F{N(linear.FeedRate)}");break;
+                    case MotionEventKind.Arc when trace.Source is ArcMove arc&&trace.ArcCenter is{} center:
+                        var i=Definition.ArcMode==PostArcMode.IncrementalIj?center.X-trace.Start.X:X(center.X);
+                        var j=Definition.ArcMode==PostArcMode.IncrementalIj?center.Y-trace.Start.Y:Y(center.Y);
+                        output.AppendLine($"G{(trace.Clockwise?2:3)} X{N(X(trace.End.X))} Y{N(Y(trace.End.Y))} Z{N(Z(trace.EndZ))} I{N(i)} J{N(j)} F{N(arc.FeedRate)}");break;
+                    default:throw new InvalidDataException($"Unsupported canonical motion event '{trace.Kind}'.");
             }
         }
         output.AppendLine($"G0 Z{N(Z(machine.SafeZMm))}");output.AppendLine("M5");if(machine.ParkEnabled)output.AppendLine($"G53 G0 X{N(machine.ParkXmm)} Y{N(machine.ParkYmm)}");foreach(var line in Definition.FooterLines)output.AppendLine(line);return output.ToString();

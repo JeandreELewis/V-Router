@@ -83,7 +83,7 @@ All six public operation calculators apply the shared finite-number policy at th
 
 | Function | Status | Current behavior | Remaining gate |
 |---|---|---|---|
-| Canonical motion evaluation | Verified | Linear, rapid, arc, dwell, spindle and tool events produce a deterministic timed stream | Preflight/post internals must finish consuming only this event stream |
+| Canonical motion evaluation | Verified | Linear, rapid, arc, dwell, spindle and tool events produce one deterministic timed stream consumed by playback, timing, stock simulation, preflight and posting | Cross-consumer event/G-code fixtures prove one arc start, end, centre, direction and operation order |
 | Playback and time estimate | Verified | Both use the canonical evaluator and selected machine rapid/tool-change timing | UI playback interaction matrix remains |
 | CPU stock simulation | Incomplete | Uses canonical interpolation for cutter motion | Shank/holder and fixture-volume simulation remain |
 | Safety preflight | Incomplete | Blocks stale/scope-mismatched/non-finite/invalid/envelope-violating programs; straight and circular motion use exact swept cutter/shank/holder intervals against expanded fixture bounds, including sub-sample thin fixtures | Broader physical fixture proof records remain |

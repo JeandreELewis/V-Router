@@ -45,7 +45,9 @@ public class UccncTests
     public void ArcOffsetsUsePreviousEndpointAcrossConsecutiveArcs(bool clockwise,string command)
     {
         var operation=new ToolpathOperation{Moves=[new RapidMove(new(110,200),5),new LinearMove(new(110,200),-1,200),new ArcMove(new(100,210),new(100,200),-1,800,clockwise),new ArcMove(new(90,200),new(100,200),-1,800,clockwise)]};
-        var code=Code(Process(new(){Operations=[operation]},new(){WorkZeroDocumentXmm=100,WorkZeroDocumentYmm=200}));
+        var program=new ToolpathProgram{Operations=[operation]};var events=MotionEvaluator.Evaluate(program,new(5000)).Events;var arcs=events.Where(trace=>trace.Kind==MotionEventKind.Arc).ToArray();
+        Assert.Equal(new Point2D(110,200),arcs[0].Start);Assert.Equal(new Point2D(100,210),arcs[0].End);Assert.Equal(new Point2D(100,200),arcs[0].ArcCenter);Assert.Equal(clockwise,arcs[0].Clockwise);Assert.Equal(arcs[0].End,arcs[1].Start);
+        var code=Code(Process(program,new(){WorkZeroDocumentXmm=100,WorkZeroDocumentYmm=200}));
         Assert.Contains($"{command} X0.000 Y10.000 Z-1.000 I-10.000 J0.000",code);Assert.Contains($"{command} X-10.000 Y0.000 Z-1.000 I0.000 J-10.000",code);
     }
 
