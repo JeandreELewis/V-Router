@@ -28,11 +28,18 @@ public static class EntityHitTester
 
     private static bool IsHit(CadEntity entity, Point2D point, double tolerance)
     {
-        var points = EntityGeometry.WorldPoints(entity);
-        if (points.Count < 2) return Expanded(entity.GetBounds(), tolerance).Contains(point);
-        if (points.Zip(points.Skip(1)).Any(pair => DistanceToSegment(point, pair.First, pair.Second) <= tolerance)) return true;
-        return entity is RectangleEntity or CircleEntity or EllipseEntity or PolylineEntity { IsClosed: true }
-            && DistanceToSegment(point, points[^1], points[0]) <= tolerance;
+        var figures=EntityGeometry.WorldFigures(entity);
+        if(figures.All(points=>points.Count<2))return Expanded(entity.GetBounds(),tolerance).Contains(point);
+        for(var figureIndex=0;figureIndex<figures.Count;figureIndex++)
+        {
+            var points=figures[figureIndex];
+            if(points.Zip(points.Skip(1)).Any(pair=>DistanceToSegment(point,pair.First,pair.Second)<=tolerance))return true;
+            var closed=entity is RectangleEntity or CircleEntity or EllipseEntity or PolylineEntity{IsClosed:true}
+                ||entity is VectorPathEntity path&&path.Figures.ElementAtOrDefault(figureIndex)?.IsClosed==true
+                ||entity is TextEntity text&&text.Outlines.ElementAtOrDefault(figureIndex)?.IsClosed==true;
+            if(closed&&points.Count>2&&DistanceToSegment(point,points[^1],points[0])<=tolerance)return true;
+        }
+        return false;
     }
 
     private static bool NearRectangle(BoundingBox box, Point2D p, double tolerance) =>

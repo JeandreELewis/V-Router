@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "isRoot": true,
+  "tools": {
+    "cyclonedx": {
+      "version": "6.3.1",
+      "commands": ["dotnet-CycloneDX"]
+    },
+    "nuget-license": {
+      "version": "4.0.18",
+      "commands": ["nuget-license"]
+    },
+    "wix": {
+      "version": "5.0.2",
+      "commands": ["wix"]
+    }
+  }
+}

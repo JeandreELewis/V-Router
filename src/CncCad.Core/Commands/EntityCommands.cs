@@ -46,6 +46,18 @@ public sealed class ImportEntitiesCommand(CadDocument document,IEnumerable<CadLa
     public void Undo(){foreach(var entity in _entities)document.Entities.Remove(entity);foreach(var layer in _layers)document.Layers.Remove(layer);document.ActiveLayerId=_before;}
 }
 
+public sealed class ReplaceImportedLayoutCommand:IUndoableCommand,IEntityAffectingCommand
+{
+    private readonly CadDocument _document;private readonly (CadEntity Entity,int Index)[] _oldEntities;private readonly (CadLayer Layer,int Index)[] _oldLayers;private readonly CadEntity[] _newEntities;private readonly CadLayer[] _newLayers;private readonly Guid _activeBefore;
+    public ReplaceImportedLayoutCommand(CadDocument document,IEnumerable<Guid> oldEntityIds,IEnumerable<Guid> oldLayerIds,IEnumerable<CadLayer> newLayers,IEnumerable<CadEntity> newEntities)
+    {
+        _document=document;var entities=oldEntityIds.ToHashSet();var layers=oldLayerIds.ToHashSet();_oldEntities=document.Entities.Select((entity,index)=>(entity,index)).Where(item=>entities.Contains(item.entity.Id)).Select(item=>(item.entity,item.index)).ToArray();_oldLayers=document.Layers.Select((layer,index)=>(layer,index)).Where(item=>layers.Contains(item.layer.Id)).Select(item=>(item.layer,item.index)).ToArray();_newLayers=newLayers.ToArray();_newEntities=newEntities.ToArray();_activeBefore=document.ActiveLayerId;
+    }
+    public string Description=>"Replace nested layout";public IReadOnlyCollection<Guid>AffectedEntityIds=>_oldEntities.Select(item=>item.Entity.Id).Concat(_newEntities.Select(entity=>entity.Id)).Distinct().ToArray();
+    public void Execute(){foreach(var item in _oldEntities)_document.Entities.Remove(item.Entity);foreach(var item in _oldLayers)_document.Layers.Remove(item.Layer);foreach(var layer in _newLayers)if(_document.Layers.All(existing=>existing.Id!=layer.Id))_document.Layers.Add(layer);foreach(var entity in _newEntities)if(!_document.Entities.Contains(entity))_document.Entities.Add(entity);if(_newLayers.Length>0)_document.ActiveLayerId=_newLayers[0].Id;}
+    public void Undo(){foreach(var entity in _newEntities)_document.Entities.Remove(entity);foreach(var layer in _newLayers)_document.Layers.Remove(layer);foreach(var item in _oldLayers.OrderBy(item=>item.Index))_document.Layers.Insert(Math.Min(item.Index,_document.Layers.Count),item.Layer);foreach(var item in _oldEntities.OrderBy(item=>item.Index))_document.Entities.Insert(Math.Min(item.Index,_document.Entities.Count),item.Entity);_document.ActiveLayerId=_activeBefore;}
+}
+
 public sealed class MoveEntitiesCommand : IUndoableCommand, IEntityAffectingCommand
 {
     private readonly HashSet<Guid> _ids;

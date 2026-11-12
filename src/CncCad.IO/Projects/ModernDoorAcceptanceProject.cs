@@ -82,7 +82,7 @@ public static class ModernDoorAcceptanceProject
         {
             Name="1200 × 1200 CNC Router",MinimumXmm=-1200,MaximumXmm=1200,MinimumYmm=-1200,MaximumYmm=1200,MinimumZmm=-150,MaximumZmm=50,
             RapidRateMmPerMin=5000,MaximumSpindleRpm=24000,DefaultClearanceMm=8,HolderDiameterMm=35,HolderLengthMm=45,
-            ParkXmm=0,ParkYmm=0,AllowedSpoilboardDepthMm=.5,PostProcessorId="uccnc-mm"
+            ParkXmm=0,ParkYmm=0,AllowedSpoilboardDepthMm=.5,PostProcessorId="uccnc"
         };
         return new CncProject
         {

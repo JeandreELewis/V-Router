@@ -2,7 +2,9 @@
 
 ## Dependency direction
 
-`CncCad.Core` owns documents, geometry, entities, units and coordinate transforms and has no UI dependency. `CncCad.Cam` depends only on Core and converts geometry plus operation parameters into machine-independent moves. `CncCad.PostProcessors` converts those moves into controller syntax. `CncCad.Rendering` is the Avalonia adapter for documents and toolpaths. `CncCad.Infrastructure` owns SQLite/EF Core and logging. `CncCad.IO` owns project/import/export formats. `CncCad.Simulation` estimates program time. The App is the composition root.
+`CncCad.Core` owns documents, geometry, entities, units and coordinate transforms and has no UI dependency. `CncCad.Cam` depends only on Core and converts geometry plus operation parameters into deterministic machine-independent moves through a typed calculator registry. `CncCad.PostProcessors` converts those moves into controller syntax through a constrained declarative definition. `CncCad.Rendering` is the Avalonia adapter for documents and toolpaths. `CncCad.Infrastructure` owns SQLite/EF Core and logging. `CncCad.IO` owns project/import/export formats. `CncCad.Simulation` estimates program time. The App is the composition root.
+
+Project schema version 9 is current. Versions 1–8 are migrated in memory; the original file is not changed until the user saves. Millimetres are canonical inside every assembly. Inch conversion occurs only at input, display and postprocessing boundaries.
 
 ## Decisions
 

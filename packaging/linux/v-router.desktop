@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=V-Router
+Comment=Router-focused CAD/CAM by Vision BI
+Exec=V-Router
+Icon=v-router
+Terminal=false
+Categories=Graphics;Engineering;
+StartupWMClass=V-Router

@@ -6,6 +6,7 @@ public enum AccentPreference { CncBlue, System }
 public enum StartupWorkspace { Design, Toolpaths }
 public enum WorkspaceMode { Startup, Design, Toolpaths }
 public enum ViewportLayout { Design2D, Preview3D, HorizontalSplit, VerticalSplit }
+public enum ExperienceMode { Guided, Advanced }
 
 public sealed record ApplicationPreferences
 {
@@ -22,6 +23,7 @@ public sealed record ApplicationPreferences
     public bool ConfirmBeforeReplacingUnsavedJob { get; init; } = true;
     public WorkspaceMode LastWorkspaceMode { get; init; } = WorkspaceMode.Startup;
     public ViewportLayout ViewportLayout { get; init; } = ViewportLayout.Design2D;
+    public ExperienceMode ExperienceMode { get; init; } = ExperienceMode.Guided;
 
     public static ApplicationPreferences Defaults { get; } = new();
 }

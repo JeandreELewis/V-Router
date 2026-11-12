@@ -46,6 +46,10 @@ internal static class ClipperGeometryAdapter
         }
         return result;
     }
+    public static IReadOnlyList<IReadOnlyList<Point2D>> InsetRegion(IEnumerable<IReadOnlyList<Point2D>> contours,double inset)
+    {
+        if(!double.IsFinite(inset)||inset<0)throw new ArgumentOutOfRangeException(nameof(inset));var source=new PathsD(contours.Select(contour=>new PathD(contour.Select(point=>new PointD(point.X,point.Y)))));if(source.Count==0)return[];var region=Clipper.Union(source,FillRule.EvenOdd);var result=inset<=1e-9?region:Clipper.InflatePaths(region,-inset,JoinType.Miter,EndType.Polygon,6);return result.Where(path=>path.Count>=3&&Math.Abs(Clipper.Area(path))>1e-8).Select(path=>(IReadOnlyList<Point2D>)path.Select(point=>new Point2D(point.x,point.y)).ToArray()).ToArray();
+    }
 
     public static double SignedArea(IReadOnlyList<Point2D> path)
     {

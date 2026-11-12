@@ -1,0 +1,23 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal">
+  <Bundle Name="V-Router"
+          Manufacturer="Vision BI"
+          Version="$(var.ProductVersion)"
+          UpgradeCode="D645877D-6363-481F-A719-60E680A5FA6F"
+          IconSourceFile="$(var.IconPath)"
+          Compressed="yes">
+    <BootstrapperApplication>
+      <bal:WixStandardBootstrapperApplication
+          LicenseUrl=""
+          LogoFile="$(var.LogoPath)"
+          ShowVersion="yes"
+          Theme="hyperlinkLicense" />
+    </BootstrapperApplication>
+    <Chain>
+      <MsiPackage Id="VRouterMsi"
+                  SourceFile="$(var.MsiPath)"
+                  Compressed="yes"
+                  Visible="no" />
+    </Chain>
+  </Bundle>
+</Wix>

@@ -5,7 +5,12 @@
     <AssemblyName>V-Router</AssemblyName>
     <Product>V-Router</Product>
     <Title>V-Router</Title>
+    <Company>Vision BI</Company>
+    <Authors>Vision BI and V-Router contributors</Authors>
+    <Copyright>Copyright © Vision BI and V-Router contributors</Copyright>
     <Description>Open-source CAD/CAM software for CNC router workflows.</Description>
+    <ApplicationIcon>Assets/v-router.ico</ApplicationIcon>
+    <UseAppHost>true</UseAppHost>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>

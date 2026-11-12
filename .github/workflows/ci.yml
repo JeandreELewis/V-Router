@@ -1,8 +1,9 @@
-name: build-and-test
+name: build-test-audit
 
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
 
@@ -10,7 +11,28 @@ permissions:
   contents: read
 
 jobs:
-  validate:
+  build-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet restore CncCad.slnx
+      - run: dotnet build CncCad.slnx --configuration Release --no-restore
+      - run: dotnet test CncCad.slnx --configuration Release --no-build --logger "trx;LogFileName=tests-${{ runner.os }}.trx"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ runner.os }}
+          path: '**/TestResults/*.trx'
+
+  dependency-audit:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -18,9 +40,117 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
-      - name: Restore
-        run: dotnet restore CncCad.slnx
-      - name: Build
-        run: dotnet build CncCad.slnx --configuration Release --no-restore
-      - name: Test
-        run: dotnet test CncCad.slnx --configuration Release --no-build --logger "trx;LogFileName=tests.trx"
+      - run: dotnet restore CncCad.slnx
+      - name: Fail on known vulnerable dependencies
+        run: dotnet list CncCad.slnx package --vulnerable --include-transitive --format json | tee vulnerable-packages.json && ! grep -q '"severity"' vulnerable-packages.json
+      - run: dotnet tool restore
+      - name: License inventory
+        run: mkdir -p artifacts && dotnet tool run nuget-license -i CncCad.slnx -o JsonPretty -fo artifacts/licenses.json
+      - name: CycloneDX SBOM
+        run: dotnet tool run dotnet-CycloneDX CncCad.slnx -o artifacts/sbom -F Json -c Release -t
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit-and-sbom
+          path: |
+            vulnerable-packages.json
+            artifacts/
+
+  publish-preview-binaries:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-test, dependency-audit]
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+            label: linux-x64-preview
+          - os: macos-latest
+            rid: osx-x64
+            label: macos-x64-preview
+          - os: macos-latest
+            rid: osx-arm64
+            label: macos-arm64-preview
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - if: runner.os == 'Linux'
+        run: chmod +x packaging/linux/build-preview.sh && packaging/linux/build-preview.sh ${{ matrix.rid }} Release artifacts/${{ matrix.label }}
+      - if: runner.os == 'macOS'
+        run: chmod +x packaging/macos/build-app.sh && packaging/macos/build-app.sh ${{ matrix.rid }} Release "${GITHUB_REF_NAME#v}" artifacts/${{ matrix.label }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.label }}
+          path: artifacts/${{ matrix.label }}/
+
+  windows-production-package:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-test, dependency-audit]
+    runs-on: windows-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet tool restore
+      - name: Publish Windows x64
+        shell: pwsh
+        run: |
+          dotnet publish src/CncCad.App/CncCad.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/windows-x64
+          Copy-Item LICENSE artifacts/windows-x64/LICENSE.txt
+          Copy-Item docs/THIRD_PARTY_NOTICES.md artifacts/windows-x64/THIRD_PARTY_NOTICES.md
+      - name: Require signing certificate
+        shell: pwsh
+        env:
+          SIGNING_CERTIFICATE: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
+          SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGNING_CERTIFICATE) -or [string]::IsNullOrWhiteSpace($env:SIGNING_PASSWORD)) { throw "Production tags require Windows signing secrets." }
+          [IO.File]::WriteAllBytes("artifacts/signing.pfx", [Convert]::FromBase64String($env:SIGNING_CERTIFICATE))
+          $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -Recurse | Where-Object FullName -Match '\\x64\\' | Sort-Object FullName -Descending | Select-Object -First 1
+          if ($null -eq $signTool) { throw "signtool.exe was not found." }
+          & $signTool.FullName sign /fd SHA256 /f artifacts/signing.pfx /p $env:SIGNING_PASSWORD /tr http://timestamp.digicert.com /td SHA256 artifacts/windows-x64/V-Router.exe
+          & $signTool.FullName verify /pa /v artifacts/windows-x64/V-Router.exe
+      - name: Build and sign installer, MSI and portable ZIP
+        shell: pwsh
+        env:
+          SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
+        run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart('v').Split('-')[0]
+          $publishPath = (Resolve-Path artifacts/windows-x64).Path
+          $artifactsPath = (Resolve-Path artifacts).Path
+          $msiPath = Join-Path $artifactsPath "V-Router-$version-x64.msi"
+          $unsignedSetupPath = Join-Path $artifactsPath "V-Router-Setup-unsigned.exe"
+          $setupPath = Join-Path $artifactsPath "V-Router-Setup.exe"
+          $enginePath = Join-Path $artifactsPath "V-Router-Setup-engine.exe"
+          $iconPath = (Resolve-Path src/CncCad.App/Assets/v-router.ico).Path
+          $logoPath = (Resolve-Path src/CncCad.App/Assets/v-router-logo.png).Path
+          dotnet tool run wix build packaging/windows/Package.wxs -arch x64 -b "PublishDir=$publishPath" -d "ProductVersion=$version" -d "IconPath=$iconPath" -o $msiPath
+          $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -Recurse | Where-Object FullName -Match '\\x64\\' | Sort-Object FullName -Descending | Select-Object -First 1
+          & $signTool.FullName sign /fd SHA256 /f artifacts/signing.pfx /p $env:SIGNING_PASSWORD /tr http://timestamp.digicert.com /td SHA256 $msiPath
+          & $signTool.FullName verify /pa /v $msiPath
+          dotnet tool run wix extension add -g WixToolset.BootstrapperApplications.wixext/5.0.2
+          dotnet tool run wix build packaging/windows/Bundle.wxs -arch x64 -ext WixToolset.BootstrapperApplications.wixext -d "MsiPath=$msiPath" -d "ProductVersion=$version" -d "IconPath=$iconPath" -d "LogoPath=$logoPath" -o $unsignedSetupPath
+          dotnet tool run wix burn detach $unsignedSetupPath -engine $enginePath
+          & $signTool.FullName sign /fd SHA256 /f artifacts/signing.pfx /p $env:SIGNING_PASSWORD /tr http://timestamp.digicert.com /td SHA256 $enginePath
+          dotnet tool run wix burn reattach $unsignedSetupPath -engine $enginePath -o $setupPath
+          & $signTool.FullName sign /fd SHA256 /f artifacts/signing.pfx /p $env:SIGNING_PASSWORD /tr http://timestamp.digicert.com /td SHA256 $setupPath
+          & $signTool.FullName verify /pa /v $setupPath
+          Compress-Archive artifacts/windows-x64/* artifacts/V-Router-$version-win-x64-portable.zip
+          Get-FileHash $setupPath,$msiPath,artifacts/V-Router-$version-win-x64-portable.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $([IO.Path]::GetFileName($_.Path))" } | Set-Content artifacts/SHA256SUMS.txt
+          Remove-Item artifacts/signing.pfx,$unsignedSetupPath,$enginePath
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v-router-windows-installer
+          path: artifacts/V-Router-Setup.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-production-signed
+          path: |
+            artifacts/V-Router-Setup.exe
+            artifacts/*.msi
+            artifacts/*.zip
+            artifacts/SHA256SUMS.txt

@@ -7,6 +7,7 @@ namespace CncCad.Cam.Drilling;
 
 public sealed class DrillOperationCalculator : ICamOperationCalculator
 {
+    public Type OperationType=>typeof(DrillOperationDefinition);
     public OperationCalculationResult Calculate(CamOperationDefinition operation, IReadOnlyDictionary<Guid, CadEntity> geometry)
     {
         if (operation is not DrillOperationDefinition drill) return OperationCalculationResult.Failed(new OperationValidationError("unsupported", "Operation is not drilling."));

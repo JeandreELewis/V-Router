@@ -1,0 +1,30 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="V-Router"
+           Manufacturer="Vision BI"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="9B7D5FC7-8B6B-4A67-89CD-6C778526D023"
+           Scope="perMachine"
+           Compressed="yes">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of V-Router is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Icon Id="VRouterIcon.ico" SourceFile="$(var.IconPath)" />
+    <Property Id="ARPPRODUCTICON" Value="VRouterIcon.ico" />
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="V-Router" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="V-Router" />
+    </StandardDirectory>
+    <Files Include="!(bindpath.PublishDir)\**" Directory="INSTALLFOLDER" />
+    <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder" Guid="7A1BFC60-08C6-47C8-B3BB-13704A8A63E4">
+      <Shortcut Id="ApplicationStartMenuShortcut"
+                Name="V-Router"
+                Description="Router-focused CAD/CAM by Vision BI"
+                Target="[INSTALLFOLDER]V-Router.exe"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="VRouterIcon.ico" />
+      <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall" />
+      <RegistryValue Root="HKLM" Key="Software\Vision BI\V-Router" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+  </Package>
+</Wix>

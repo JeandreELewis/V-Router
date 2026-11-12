@@ -5,6 +5,9 @@ using CncCad.Core.Geometry;
 
 namespace CncCad.Cam.Safety;
 
+public enum ControllerFamily { Uccnc, Mach3, Mach4, Grbl, LinuxCnc, Community }
+public enum MachineToolChangeMode { SeparateFiles, ManualPause, Automatic }
+
 public sealed class MachineProfileDefinition
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -16,6 +19,7 @@ public sealed class MachineProfileDefinition
     public double MinimumZmm { get; set; } = -150;
     public double MaximumZmm { get; set; } = 50;
     public double RapidRateMmPerMin { get; set; } = 5000;
+    public double ToolChangeSeconds { get; set; } = 30;
     public int MaximumSpindleRpm { get; set; } = 24000;
     public double DefaultClearanceMm { get; set; } = 5;
     public double HolderDiameterMm { get; set; } = 35;
@@ -24,17 +28,23 @@ public sealed class MachineProfileDefinition
     public double ToolChangeYmm { get; set; }
     public double ParkXmm { get; set; }
     public double ParkYmm { get; set; }
+    public bool ParkEnabled { get; set; }
     public double AllowedSpoilboardDepthMm { get; set; } = 0.5;
-    public string PostProcessorId { get; set; } = "uccnc-mm";
+    public string PostProcessorId { get; set; } = "uccnc";
+    public ControllerFamily ControllerFamily { get; set; } = ControllerFamily.Uccnc;
+    public MeasurementUnit OutputUnit { get; set; } = MeasurementUnit.Millimetres;
+    public bool SupportsArcs { get; set; } = true;
+    public MachineToolChangeMode ToolChangeMode { get; set; } = MachineToolChangeMode.SeparateFiles;
 
     public MachineSnapshot Snapshot() => new()
     {
         SourceMachineId = Id, Name = Name, MinimumXmm = MinimumXmm, MaximumXmm = MaximumXmm,
         MinimumYmm = MinimumYmm, MaximumYmm = MaximumYmm, MinimumZmm = MinimumZmm, MaximumZmm = MaximumZmm,
-        RapidRateMmPerMin = RapidRateMmPerMin, MaximumSpindleRpm = MaximumSpindleRpm,
+        RapidRateMmPerMin = RapidRateMmPerMin, ToolChangeSeconds=ToolChangeSeconds, MaximumSpindleRpm = MaximumSpindleRpm,
         DefaultClearanceMm = DefaultClearanceMm, HolderDiameterMm = HolderDiameterMm, HolderLengthMm = HolderLengthMm,
-        ToolChangeXmm = ToolChangeXmm, ToolChangeYmm = ToolChangeYmm, ParkXmm = ParkXmm, ParkYmm = ParkYmm,
-        AllowedSpoilboardDepthMm = AllowedSpoilboardDepthMm, PostProcessorId = PostProcessorId
+        ToolChangeXmm = ToolChangeXmm, ToolChangeYmm = ToolChangeYmm, ParkXmm = ParkXmm, ParkYmm = ParkYmm, ParkEnabled=ParkEnabled,
+        AllowedSpoilboardDepthMm = AllowedSpoilboardDepthMm, PostProcessorId = PostProcessorId,
+        ControllerFamily=ControllerFamily,OutputUnit=OutputUnit,SupportsArcs=SupportsArcs,ToolChangeMode=ToolChangeMode
     };
 }
 
@@ -49,6 +59,7 @@ public sealed record MachineSnapshot
     public double MinimumZmm { get; init; }
     public double MaximumZmm { get; init; }
     public double RapidRateMmPerMin { get; init; }
+    public double ToolChangeSeconds { get; init; }
     public int MaximumSpindleRpm { get; init; }
     public double DefaultClearanceMm { get; init; }
     public double HolderDiameterMm { get; init; }
@@ -57,9 +68,17 @@ public sealed record MachineSnapshot
     public double ToolChangeYmm { get; init; }
     public double ParkXmm { get; init; }
     public double ParkYmm { get; init; }
+    public bool ParkEnabled { get; init; }
     public double AllowedSpoilboardDepthMm { get; init; }
-    public string PostProcessorId { get; init; } = "uccnc-mm";
-    public bool IsComplete => !string.IsNullOrWhiteSpace(Name) && !string.IsNullOrWhiteSpace(PostProcessorId) && MaximumXmm > MinimumXmm && MaximumYmm > MinimumYmm && MaximumZmm > MinimumZmm && RapidRateMmPerMin > 0 && MaximumSpindleRpm > 0 && DefaultClearanceMm > 0 && HolderDiameterMm > 0 && HolderLengthMm > 0 && AllowedSpoilboardDepthMm >= 0;
+    public string PostProcessorId { get; init; } = "uccnc";
+    public ControllerFamily ControllerFamily { get; init; } = ControllerFamily.Uccnc;
+    public MeasurementUnit OutputUnit { get; init; } = MeasurementUnit.Millimetres;
+    public bool SupportsArcs { get; init; } = true;
+    public MachineToolChangeMode ToolChangeMode { get; init; } = MachineToolChangeMode.SeparateFiles;
+    public bool IsComplete => !string.IsNullOrWhiteSpace(Name) && !string.IsNullOrWhiteSpace(PostProcessorId)
+        && Finite(MinimumXmm,MaximumXmm,MinimumYmm,MaximumYmm,MinimumZmm,MaximumZmm,RapidRateMmPerMin,ToolChangeSeconds,DefaultClearanceMm,HolderDiameterMm,HolderLengthMm,ToolChangeXmm,ToolChangeYmm,ParkXmm,ParkYmm,AllowedSpoilboardDepthMm)
+        && MaximumXmm > MinimumXmm && MaximumYmm > MinimumYmm && MaximumZmm > MinimumZmm && RapidRateMmPerMin > 0 && ToolChangeSeconds>=0 && MaximumSpindleRpm > 0 && DefaultClearanceMm > 0 && HolderDiameterMm > 0 && HolderLengthMm > 0 && AllowedSpoilboardDepthMm >= 0;
+    private static bool Finite(params double[] values)=>values.All(double.IsFinite);
 }
 
 public sealed record FixtureDefinition

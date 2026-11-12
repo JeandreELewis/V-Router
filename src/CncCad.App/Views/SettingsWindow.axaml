@@ -8,6 +8,7 @@
     <ScrollViewer Grid.Row="1"><StackPanel Margin="22" Spacing="13">
       <TextBlock Classes="heading" Text="WORKSPACE"/>
       <Grid ColumnDefinitions="190,*"><TextBlock Text="Startup panel" VerticalAlignment="Center"/><ComboBox x:Name="StartupPicker" Grid.Column="1"/></Grid>
+      <Grid ColumnDefinitions="190,*"><TextBlock Text="Toolpath editing" VerticalAlignment="Center"/><ComboBox x:Name="ExperiencePicker" Grid.Column="1"/></Grid>
       <CheckBox x:Name="ShowGridCheck" Content="Show drawing grid"/>
       <Grid ColumnDefinitions="190,*"><TextBlock Text="Default grid spacing (mm)" VerticalAlignment="Center"/><NumericUpDown x:Name="GridSpacingInput" Grid.Column="1" Minimum="0.1" Maximum="1000"/></Grid>
       <CheckBox x:Name="SnappingCheck" Content="Enable snapping"/>

@@ -40,4 +40,18 @@ public class TabsAndNestingTests
     {
         var a=new RectangleEntity{Width=200,Height=100};var part=new NestPartDefinition{OuterGeometryId=a.Id,Quantity=2};var job=new NestingJobDefinition{Parts=[part],SheetTemplate=new(){WidthMm=100,HeightMm=100,Quantity=1},EdgeMarginMm=5};var result=new DeterministicNestingOptimizer().Optimize(new(job,new Dictionary<Guid,CadEntity>{{a.Id,a}}));Assert.Equal(2,result.UnplacedQuantities[part.Id]);Assert.Empty(result.Placements);
     }
+
+    [Fact]
+    public void NestingHonorsPartAndSheetGrainWhenChoosingRotations()
+    {
+        var source=new RectangleEntity{Width=80,Height=30};
+        var part=new NestPartDefinition{OuterGeometryId=source.Id,Quantity=1,Grain=NestGrainDirection.AlongY,AllowQuarterTurn=true};
+        var job=new NestingJobDefinition{Parts=[part],SheetTemplate=new(){WidthMm=40,HeightMm=100,Quantity=1,Grain=NestGrainDirection.AlongX},EdgeMarginMm=2};
+        var result=new DeterministicNestingOptimizer().Optimize(new(job,new Dictionary<Guid,CadEntity>{{source.Id,source}}));
+        Assert.True(result.Success);Assert.Contains(Assert.Single(result.Placements).RotationDegrees,new[]{90,270});
+
+        part.AllowQuarterTurn=false;
+        var blocked=new DeterministicNestingOptimizer().Optimize(new(job,new Dictionary<Guid,CadEntity>{{source.Id,source}}));
+        Assert.False(blocked.Success);Assert.Equal(1,blocked.UnplacedQuantities[part.Id]);
+    }
 }

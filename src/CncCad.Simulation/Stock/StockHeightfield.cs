@@ -41,26 +41,11 @@ public sealed class CpuStockSimulationService : IStockSimulationService
 
     private static void Apply(StockHeightfield field,CamOperationDefinition definition)
     {
-        var point=new Point2D(0,0);var z=0d;
-        foreach(var move in definition.CalculatedToolpath!.Moves)
-        {
-            switch(move)
-            {
-                case RapidMove rapid:point=rapid.End;z=rapid.Z;break;
-                case LinearMove linear:CutLine(field,definition.Tool,point,z,linear.End,linear.Z);point=linear.End;z=linear.Z;break;
-                case ArcMove arc:CutArc(field,definition.Tool,point,z,arc);point=arc.End;z=arc.Z;break;
-            }
-        }
+        var program=new ToolpathProgram{Operations=[definition.CalculatedToolpath!]};var evaluation=MotionEvaluator.Evaluate(program,new(5000));if(!evaluation.Success)throw new InvalidDataException(string.Join(" ",evaluation.Diagnostics.Select(x=>x.Message)));foreach(var trace in evaluation.Events.Where(trace=>trace.Kind is MotionEventKind.Linear or MotionEventKind.Arc))CutTrace(field,definition.Tool,trace);
     }
-    private static void CutLine(StockHeightfield field,ToolSnapshot tool,Point2D start,double startZ,Point2D end,double endZ)
+    private static void CutTrace(StockHeightfield field,ToolSnapshot tool,MotionTraceEvent trace)
     {
-        var distance=Math.Sqrt(Math.Pow(end.X-start.X,2)+Math.Pow(end.Y-start.Y,2)+Math.Pow(endZ-startZ,2));var count=Math.Max(1,(int)Math.Ceiling(distance/(field.CellSizeMm/2)));
-        for(var i=0;i<=count;i++){var t=i/(double)count;Sweep(field,tool,new(start.X+(end.X-start.X)*t,start.Y+(end.Y-start.Y)*t),startZ+(endZ-startZ)*t);}
-    }
-    private static void CutArc(StockHeightfield field,ToolSnapshot tool,Point2D start,double startZ,ArcMove arc)
-    {
-        var radius=start.DistanceTo(arc.Center);var a=Math.Atan2(start.Y-arc.Center.Y,start.X-arc.Center.X);var b=Math.Atan2(arc.End.Y-arc.Center.Y,arc.End.X-arc.Center.X);var sweep=b-a;if(arc.Clockwise&&sweep>=0)sweep-=Math.PI*2;else if(!arc.Clockwise&&sweep<=0)sweep+=Math.PI*2;var count=Math.Max(8,(int)Math.Ceiling(Math.Abs(sweep)*radius/(field.CellSizeMm/2)));
-        for(var i=0;i<=count;i++){var t=i/(double)count;var angle=a+sweep*t;Sweep(field,tool,new(arc.Center.X+radius*Math.Cos(angle),arc.Center.Y+radius*Math.Sin(angle)),startZ+(arc.Z-startZ)*t);}
+        var count=Math.Max(trace.Kind==MotionEventKind.Arc?8:1,(int)Math.Ceiling(trace.PathLengthMm/(field.CellSizeMm/2)));for(var i=0;i<=count;i++){var progress=i/(double)count;Sweep(field,tool,trace.PointAt(progress),trace.ZAt(progress));}
     }
     private static void Sweep(StockHeightfield field,ToolSnapshot tool,Point2D center,double tipZ)
     {

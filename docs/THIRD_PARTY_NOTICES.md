@@ -1,5 +1,13 @@
 # Third-party notices
 
+The release audit currently reports only permissive dependencies: MIT, Apache-2.0 and BSL-1.0. The tagged-build license inventory and CycloneDX SBOM remain the authoritative version-specific records.
+
+| Dependency family | License |
+|---|---|
+| Avalonia, CommunityToolkit.Mvvm, IxMilia.Dxf, Microsoft.EntityFrameworkCore.Sqlite, Microsoft.NET.Test.Sdk, SkiaSharp | MIT |
+| SQLitePCLRaw, Serilog, xUnit | Apache-2.0 |
+| Clipper2 | BSL-1.0 |
+
 ## SkiaSharp and HarfBuzzSharp
 
 The desktop font adapter uses SkiaSharp and SkiaSharp.HarfBuzz 4.148.0 for installed-font discovery, metrics, shaping support, and native outline extraction. These packages are distributed under their respective MIT-style notices. Package source and license metadata are available from the pinned NuGet packages and their upstream repositories.

@@ -11,7 +11,7 @@ public sealed class NestPartDefinition
 }
 public sealed class MaterialSheetDefinition
 {
-    public Guid Id { get; set; }=Guid.NewGuid();public string Name { get; set; }="Sheet";public double WidthMm { get; set; }=600;public double HeightMm { get; set; }=400;public double ThicknessMm { get; set; }=18;public int Quantity { get; set; }=100;
+    public Guid Id { get; set; }=Guid.NewGuid();public string Name { get; set; }="Sheet";public double WidthMm { get; set; }=600;public double HeightMm { get; set; }=400;public double ThicknessMm { get; set; }=18;public int Quantity { get; set; }=100;public NestGrainDirection Grain { get; set; }=NestGrainDirection.AlongX;
 }
 public sealed class NestedPartPlacement
 {

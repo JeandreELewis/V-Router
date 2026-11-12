@@ -11,13 +11,14 @@ public partial class SettingsWindow : Window
     {
         InitializeComponent();
         StartupPicker.ItemsSource = Enum.GetValues<StartupWorkspace>();
+        ExperiencePicker.ItemsSource = Enum.GetValues<ExperienceMode>();
         AccentPicker.ItemsSource = Enum.GetValues<AccentPreference>();
         Apply(preferences);
     }
 
     private void Apply(ApplicationPreferences p)
     {
-        StartupPicker.SelectedItem=p.StartupWorkspace; ShowGridCheck.IsChecked=p.ShowGrid; GridSpacingInput.Value=(decimal)p.GridSpacingMm;
+        StartupPicker.SelectedItem=p.StartupWorkspace;ExperiencePicker.SelectedItem=p.ExperienceMode; ShowGridCheck.IsChecked=p.ShowGrid; GridSpacingInput.Value=(decimal)p.GridSpacingMm;
         SnappingCheck.IsChecked=p.SnappingEnabled; SnapGridCheck.IsChecked=p.SnapToGrid; EndpointCheck.IsChecked=p.SnapToEndpoints;
         MidpointCheck.IsChecked=p.SnapToMidpoints; CenterCheck.IsChecked=p.SnapToCenters; ToolpathsCheck.IsChecked=p.ShowToolpaths;
         AccentPicker.SelectedItem=p.Accent; UnsavedCheck.IsChecked=p.ConfirmBeforeReplacingUnsavedJob;
@@ -31,6 +32,6 @@ public partial class SettingsWindow : Window
         GridSpacingMm=(double)(GridSpacingInput.Value??10), SnappingEnabled=SnappingCheck.IsChecked==true, SnapToGrid=SnapGridCheck.IsChecked==true,
         SnapToEndpoints=EndpointCheck.IsChecked==true, SnapToMidpoints=MidpointCheck.IsChecked==true, SnapToCenters=CenterCheck.IsChecked==true,
         ShowToolpaths=ToolpathsCheck.IsChecked==true, Accent=(AccentPreference)(AccentPicker.SelectedItem??AccentPreference.CncBlue),
-        ConfirmBeforeReplacingUnsavedJob=UnsavedCheck.IsChecked==true
+        ConfirmBeforeReplacingUnsavedJob=UnsavedCheck.IsChecked==true,ExperienceMode=(ExperienceMode)(ExperiencePicker.SelectedItem??ExperienceMode.Guided)
     });
 }

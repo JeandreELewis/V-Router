@@ -1,5 +1,7 @@
 namespace CncCad.PostProcessors.Models;
 
+using CncCad.Cam.Safety;
+
 public sealed class MachineProfile
 {
     public string Name { get; set; } = "UCCNC CNC Router";
@@ -16,4 +18,8 @@ public sealed class MachineProfile
     public double RapidRateMmPerMin { get; set; } = 5000;
     public double ParkXmm { get; set; }
     public double ParkYmm { get; set; }
+    public bool ParkEnabled { get; set; }
+    public ControllerFamily ControllerFamily { get; set; } = ControllerFamily.Uccnc;
+    public bool SupportsArcs { get; set; } = true;
+    public MachineToolChangeMode ToolChangeMode { get; set; } = MachineToolChangeMode.SeparateFiles;
 }

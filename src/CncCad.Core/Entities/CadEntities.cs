@@ -87,10 +87,17 @@ public sealed class EllipseEntity : CadEntity
 [JsonDerivedType(typeof(LinePathSegment), "line")]
 [JsonDerivedType(typeof(QuadraticPathSegment), "quadratic")]
 [JsonDerivedType(typeof(CubicPathSegment), "cubic")]
+[JsonDerivedType(typeof(ArcPathSegment), "arc")]
 public abstract record VectorPathSegment { protected VectorPathSegment(Point2D end)=>End=end; public Point2D End { get; set; } }
 public sealed record LinePathSegment : VectorPathSegment { public LinePathSegment(Point2D end):base(end){} }
 public sealed record QuadraticPathSegment : VectorPathSegment { public QuadraticPathSegment(Point2D control,Point2D end):base(end)=>Control=control; public Point2D Control { get; set; } }
 public sealed record CubicPathSegment : VectorPathSegment { public CubicPathSegment(Point2D control1,Point2D control2,Point2D end):base(end){Control1=control1;Control2=control2;} public Point2D Control1 { get; set; } public Point2D Control2 { get; set; } }
+public sealed record ArcPathSegment : VectorPathSegment
+{
+    public ArcPathSegment(Point2D center,double sweepAngleDegrees,Point2D end):base(end){Center=center;SweepAngleDegrees=sweepAngleDegrees;}
+    public Point2D Center { get; set; }
+    public double SweepAngleDegrees { get; set; }
+}
 public sealed class VectorPathFigure
 {
     public Point2D Start { get; set; }

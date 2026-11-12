@@ -60,6 +60,7 @@ public sealed class CadCanvas : Control
     private SnapResult _snapResult;
     private CadEntity? _nodeEntity;
     private int _nodeIndex=-1;
+    private Point2D? _nodeStartPoint;
     private Point2D? _lastSelectionClick;private int _hitCycleIndex;
     private SelectionDragMode _selectionDragMode;private Point2D _transformPivot;private Point2D _transformStart;private Matrix2D _transformPreview=Matrix2D.Identity;private bool _uniformScale;
     private TrimCandidate? _trimCandidate;
@@ -86,11 +87,12 @@ public sealed class CadCanvas : Control
     public Action<Vector2D>? SelectionMoved { get; set; }
     public Action<Matrix2D,string>? SelectionTransformed { get; set; }
     public Action<CadEntity,int,Point2D>? NodeMoved { get; set; }
+    public Action<CadEntity,int,Point2D>? NodeSelected { get; set; }
     public Action? SelectionChanged { get; set; }
     public Action<Point2D, double>? PointerStatusChanged { get; set; }
     public Action<SnapResult, DrawingMeasurement>? InteractionStatusChanged { get; set; }
     public Action<Point2D>? TabPlacementRequested { get; set; }
-    public Action<TrimCandidate>? TrimRequested { get; set; }
+    public Func<TrimCandidate,bool>? TrimRequested { get; set; }
     public Action<string>? TrimStatusChanged { get; set; }
 
     public CadCanvas()
@@ -124,6 +126,7 @@ public sealed class CadCanvas : Control
     public void SetTool(CanvasTool tool) { ActiveTool = tool; _trimCandidate=null;_drawingSession.SetTool(tool); Cursor=new Cursor(tool==CanvasTool.Trim?StandardCursorType.Cross:StandardCursorType.Arrow);ReportInteraction(); InvalidateVisual(); }
     public bool HandleDrawingKey(Key key)
     {
+        if(key==Key.Escape&&_nodeEntity is not null){_nodeEntity=null;_nodeIndex=-1;_nodeStartPoint=null;InvalidateVisual();return true;}
         var wasActive = _drawingSession.IsActive; var entity = _drawingSession.HandleKey(key, Document.ActiveLayerId);
         if (entity is not null) EntityCreated?.Invoke(entity); ReportInteraction(); InvalidateVisual(); return wasActive;
     }
@@ -312,8 +315,9 @@ public sealed class CadCanvas : Control
         var rect = DocRect(new(Math.Min(a.X,b.X), Math.Min(a.Y,b.Y), Math.Max(a.X,b.X), Math.Max(a.Y,b.Y)));
         context.FillRectangle(new SolidColorBrush(Color.FromArgb(35, 101, 201, 255)), rect); context.DrawRectangle(new Pen(new SolidColorBrush(Color.Parse("#65C9FF")), 1, dashStyle: DashStyle.Dash), rect);
     }
-    private void DrawNodes(DrawingContext context){var anchorBrush=new SolidColorBrush(Color.Parse("#FFD166"));var handleBrush=new SolidColorBrush(Color.Parse("#65C9FF"));var handlePen=new Pen(new SolidColorBrush(Color.FromArgb(150,101,201,255)),1);foreach(var entity in Document.Entities.Where(e=>Selection.Contains(e.Id)&&e is LineEntity or PolylineEntity or VectorPathEntity)){if(entity is not VectorPathEntity path){foreach(var p in EditableNodes(entity)){var s=Screen(p);context.DrawEllipse(anchorBrush,null,s,5,5);}continue;}foreach(var figure in path.Figures){var current=path.Transform.Transform(figure.Start);var startScreen=Screen(current);context.DrawEllipse(anchorBrush,null,startScreen,5,5);foreach(var segment in figure.Segments){switch(segment){case QuadraticPathSegment q:DrawHandle(path.Transform.Transform(q.Control),current,q.End);break;case CubicPathSegment c:DrawHandle(path.Transform.Transform(c.Control1),current,c.End);DrawHandle(path.Transform.Transform(c.Control2),path.Transform.Transform(c.End),c.End);break;}current=path.Transform.Transform(segment.End);context.DrawEllipse(anchorBrush,null,Screen(current),5,5);}}}void DrawHandle(Point2D control,Point2D anchor,Point2D end){var a=Screen(anchor);var h=Screen(control);context.DrawLine(handlePen,a,h);context.FillRectangle(handleBrush,new(h.X-4,h.Y-4,8,8));}}
-    private static IEnumerable<Point2D> EditableNodes(CadEntity entity)=>entity switch{LineEntity l=>new[]{l.Transform.Transform(l.Start),l.Transform.Transform(l.End)},PolylineEntity p=>p.Points.Select(p.Transform.Transform),VectorPathEntity path=>VectorPathNodes.Points(path).Select(path.Transform.Transform),_=>[]};
+    private void DrawNodes(DrawingContext context){var anchorBrush=new SolidColorBrush(Color.Parse("#FFD166"));var handleBrush=new SolidColorBrush(Color.Parse("#65C9FF"));var handlePen=new Pen(new SolidColorBrush(Color.FromArgb(150,101,201,255)),1);foreach(var entity in Document.Entities.Where(e=>Selection.Contains(e.Id)&&e is LineEntity or PolylineEntity or VectorPathEntity&&!ContainsExactArc(e))){if(entity is not VectorPathEntity path){foreach(var p in EditableNodes(entity)){var s=Screen(p);context.DrawEllipse(anchorBrush,null,s,5,5);}continue;}foreach(var figure in path.Figures){var current=path.Transform.Transform(figure.Start);var startScreen=Screen(current);context.DrawEllipse(anchorBrush,null,startScreen,5,5);foreach(var segment in figure.Segments){switch(segment){case QuadraticPathSegment q:DrawHandle(path.Transform.Transform(q.Control),current,q.End);break;case CubicPathSegment c:DrawHandle(path.Transform.Transform(c.Control1),current,c.End);DrawHandle(path.Transform.Transform(c.Control2),path.Transform.Transform(c.End),c.End);break;}current=path.Transform.Transform(segment.End);context.DrawEllipse(anchorBrush,null,Screen(current),5,5);}}}void DrawHandle(Point2D control,Point2D anchor,Point2D end){var a=Screen(anchor);var h=Screen(control);context.DrawLine(handlePen,a,h);context.FillRectangle(handleBrush,new(h.X-4,h.Y-4,8,8));}}
+    private static bool ContainsExactArc(CadEntity entity)=>entity is VectorPathEntity path&&path.Figures.SelectMany(figure=>figure.Segments).Any(segment=>segment is ArcPathSegment);
+    private static IEnumerable<Point2D> EditableNodes(CadEntity entity)=>entity switch{LineEntity l=>new[]{l.Transform.Transform(l.Start),l.Transform.Transform(l.End)},PolylineEntity p=>p.Points.Select(p.Transform.Transform),VectorPathEntity path when !ContainsExactArc(path)=>VectorPathNodes.Points(path).Select(path.Transform.Transform),_=>[]};
     private void DrawSnap(DrawingContext context)
     {
         if (_snapResult.Type == SnapType.None) return; var p = Screen(_snapResult.Point); var pen = new Pen(new SolidColorBrush(Color.Parse("#71E6A8")), 2);
@@ -384,11 +388,22 @@ public sealed class CadCanvas : Control
     {
         Focus(); var screen = e.GetPosition(this); _cursorScreen = screen;
         if(ToolpathPreviewMode){BeginInteractivePreview();if(e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)_lastOrbit=screen;else if(e.GetCurrentPoint(this).Properties.IsMiddleButtonPressed)_lastPan=screen;e.Pointer.Capture(this);return;}
+        if(ActiveTool==CanvasTool.Trim&&IsLeftPress(e))
+        {
+            var click=Doc(screen);UpdateTrimCandidate(click);
+            if(_trimCandidate is not {Success:true} candidate){TrimStatusChanged?.Invoke(_trimCandidate?.Error??"Hover a vector portion bounded by crossings.");InvalidateVisual();return;}
+            try
+            {
+                if(TrimRequested?.Invoke(candidate)==true){_trimCandidate=null;TrimStatusChanged?.Invoke("Vector trimmed · scissors remains active");}
+                else TrimStatusChanged?.Invoke("Trim was not applied. The red preview is still selected.");
+            }
+            catch(Exception ex){TrimStatusChanged?.Invoke($"Trim failed: {ex.Message}");}
+            InvalidateVisual();return;
+        }
         var point = Snapped(Doc(screen));
         if(TabEditMode&&e.GetCurrentPoint(this).Properties.IsLeftButtonPressed){TabPlacementRequested?.Invoke(point);InvalidateVisual();return;}
-        if(ActiveTool==CanvasTool.Trim&&e.GetCurrentPoint(this).Properties.IsLeftButtonPressed){if(_trimCandidate is{Success:true} candidate){TrimRequested?.Invoke(candidate);_trimCandidate=null;TrimStatusChanged?.Invoke("Vector trimmed · scissors remains active");}else TrimStatusChanged?.Invoke(_trimCandidate?.Error??"Hover a vector portion bounded by crossings.");InvalidateVisual();return;}
         if (e.GetCurrentPoint(this).Properties.IsMiddleButtonPressed) { _lastPan = screen; e.Pointer.Capture(this); return; }
-        if(NodeEditMode){var candidates=Document.Entities.Where(x=>Selection.Contains(x.Id)&&x is LineEntity or PolylineEntity or VectorPathEntity).SelectMany(x=>EditableNodes(x).Select((p,i)=>(Entity:x,Index:i,Point:p))).OrderBy(x=>x.Point.DistanceTo(point)).ToArray();if(candidates.FirstOrDefault() is var node&&node.Entity is not null&&node.Point.DistanceTo(point)<=8/_viewport.Zoom){_nodeEntity=node.Entity;_nodeIndex=node.Index;e.Pointer.Capture(this);return;}}
+        if(NodeEditMode){var candidates=Document.Entities.Where(x=>Selection.Contains(x.Id)&&x is LineEntity or PolylineEntity or VectorPathEntity).SelectMany(x=>EditableNodes(x).Select((p,i)=>(Entity:x,Index:i,Point:p))).OrderBy(x=>x.Point.DistanceTo(point)).ToArray();if(candidates.FirstOrDefault() is var node&&node.Entity is not null&&node.Point.DistanceTo(point)<=8/_viewport.Zoom){_nodeEntity=node.Entity;_nodeIndex=node.Index;_nodeStartPoint=node.Point;_cursorDocument=node.Point;NodeSelected?.Invoke(node.Entity,node.Index,node.Point);e.Pointer.Capture(this);return;}}
         if (ActiveTool == CanvasTool.Select)
         {
             if(TryStartSelectionTransform(screen,e.KeyModifiers)){e.Pointer.Capture(this);InvalidateVisual();return;}
@@ -404,7 +419,7 @@ public sealed class CadCanvas : Control
     {
         var screen = e.GetPosition(this); _cursorScreen = screen;
         if(ToolpathPreviewMode){if(_lastOrbit is{} orbit){BeginInteractivePreview();_camera.Orbit((screen.X-orbit.X)*.008,(orbit.Y-screen.Y)*.008);_lastOrbit=screen;}if(_lastPan is{} pan){BeginInteractivePreview();_camera.Pan(screen.X-pan.X,screen.Y-pan.Y);_lastPan=screen;}InvalidateVisual();return;}
-        if(ActiveTool==CanvasTool.Trim){_cursorDocument=Doc(screen);var hits=EntityHitTester.HitTestAll(Document.Entities.Where(IsEditable),_cursorDocument.Value,8/_viewport.Zoom);var target=hits.Select((entity,index)=>(Entity:entity,Index:index,Distance:DistanceToEntity(_cursorDocument.Value,entity))).OrderBy(x=>x.Distance).ThenBy(x=>x.Index).FirstOrDefault().Entity;_trimCandidate=target is null?null:_trimService.FindCandidate(target,Document.Entities.Where(IsEditable),_cursorDocument.Value,8/_viewport.Zoom);TrimStatusChanged?.Invoke(_trimCandidate is{Success:true}?"Click the red segment to trim it":_trimCandidate?.Error??"Hover the portion to remove");PointerStatusChanged?.Invoke(_cursorDocument.Value,_viewport.Zoom);InvalidateVisual();return;}
+        if(ActiveTool==CanvasTool.Trim){_cursorDocument=Doc(screen);UpdateTrimCandidate(_cursorDocument.Value);TrimStatusChanged?.Invoke(_trimCandidate is{Success:true}?"Click the red segment to trim it":_trimCandidate?.Error??"Hover the portion to remove");PointerStatusChanged?.Invoke(_cursorDocument.Value,_viewport.Zoom);InvalidateVisual();return;}
         if(_selectionDragMode!=SelectionDragMode.None){var current=Doc(screen);if(_selectionDragMode==SelectionDragMode.Rotate){var a=Math.Atan2(_transformStart.Y-_transformPivot.Y,_transformStart.X-_transformPivot.X);var b=Math.Atan2(current.Y-_transformPivot.Y,current.X-_transformPivot.X);_transformPreview=Matrix2D.Around(_transformPivot,Matrix2D.Rotation((b-a)*180/Math.PI));}else{var start=_transformStart-_transformPivot;var now=current-_transformPivot;var sx=Math.Abs(start.X)<1e-9?1:now.X/start.X;var sy=Math.Abs(start.Y)<1e-9?1:now.Y/start.Y;if(_uniformScale){var factor=Math.Abs(sx)>=Math.Abs(sy)?sx:sy;sx=sy=factor;}if(Math.Abs(sx)>1e-4&&Math.Abs(sy)>1e-4)_transformPreview=Matrix2D.Around(_transformPivot,Matrix2D.Scale(sx,sy));}PointerStatusChanged?.Invoke(current,_viewport.Zoom);InvalidateVisual();return;}
         _cursorDocument = Snapped(Doc(screen)); _drawingSession.PointerMoved(_cursorDocument.Value); PointerStatusChanged?.Invoke(_cursorDocument.Value, _viewport.Zoom);
         if (_lastPan is { } last) { _viewport.PanBy(new(screen.X - last.X, screen.Y - last.Y)); _lastPan = screen; }
@@ -414,8 +429,9 @@ public sealed class CadCanvas : Control
     private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
         if(ToolpathPreviewMode){_lastOrbit=null;_lastPan=null;_previewRefineTimer.Stop();_previewRefineTimer.Start();e.Pointer.Capture(null);return;}
+        if(ActiveTool==CanvasTool.Trim){e.Pointer.Capture(null);return;}
         if(_selectionDragMode!=SelectionDragMode.None){var description=_selectionDragMode==SelectionDragMode.Rotate?"Selection rotated":"Selection resized";SelectionTransformed?.Invoke(_transformPreview,description);_selectionDragMode=SelectionDragMode.None;_transformPreview=Matrix2D.Identity;e.Pointer.Capture(null);ReportInteraction();InvalidateVisual();return;}
-        if(NodeEditMode&&_nodeEntity is not null&&_cursorDocument is{} nodePoint){NodeMoved?.Invoke(_nodeEntity,_nodeIndex,nodePoint);_nodeEntity=null;_nodeIndex=-1;e.Pointer.Capture(null);InvalidateVisual();return;}
+        if(NodeEditMode&&_nodeEntity is not null&&_cursorDocument is{} nodePoint){if(_nodeStartPoint is{} nodeStart&&nodeStart.DistanceTo(nodePoint)>1e-7)NodeMoved?.Invoke(_nodeEntity,_nodeIndex,nodePoint);_nodeEntity=null;_nodeIndex=-1;_nodeStartPoint=null;e.Pointer.Capture(null);InvalidateVisual();return;}
         if (ActiveTool != CanvasTool.Select && _cursorDocument is { } drawingEnd) { var entity = _drawingSession.PointerReleased(drawingEnd, Document.ActiveLayerId); if (entity is not null) EntityCreated?.Invoke(entity); }
         if(_moveStart is { } moveStart&&_moveCurrent is { } moveEnd&&moveStart.DistanceTo(moveEnd)>1e-6){SelectionMoved?.Invoke(moveEnd-moveStart);_selectionStart=null;_selectionEnd=null;}
         if (_selectionStart is { } start && _selectionEnd is { } end)
@@ -436,9 +452,11 @@ public sealed class CadCanvas : Control
     }
     private bool TryStartSelectionTransform(Point screen,KeyModifiers modifiers)
     {
-        if(Selection.Count==0||SelectedBounds() is not{} bounds)return false;var corners=new[]{new Point2D(bounds.MinX,bounds.MinY),new Point2D(bounds.MaxX,bounds.MinY),new Point2D(bounds.MaxX,bounds.MaxY),new Point2D(bounds.MinX,bounds.MaxY)};var cornerScreens=corners.Select(Screen).ToArray();var corner=Enumerable.Range(0,4).OrderBy(i=>Math.Sqrt(Math.Pow(screen.X-cornerScreens[i].X,2)+Math.Pow(screen.Y-cornerScreens[i].Y,2))).First();if(Math.Sqrt(Math.Pow(screen.X-cornerScreens[corner].X,2)+Math.Pow(screen.Y-cornerScreens[corner].Y,2))<=11){_selectionDragMode=SelectionDragMode.Scale;_transformStart=corners[corner];_transformPivot=corners[(corner+2)%4];_uniformScale=!modifiers.HasFlag(KeyModifiers.Alt);_transformPreview=Matrix2D.Identity;return true;}var topMid=new Point((cornerScreens[2].X+cornerScreens[3].X)/2,(cornerScreens[2].Y+cornerScreens[3].Y)/2);var center=new Point(cornerScreens.Average(x=>x.X),cornerScreens.Average(x=>x.Y));var direction=new Vector(topMid.X-center.X,topMid.Y-center.Y);var length=Math.Max(1,direction.Length);var rotate=new Point(topMid.X+direction.X/length*28,topMid.Y+direction.Y/length*28);if(Math.Sqrt(Math.Pow(screen.X-rotate.X,2)+Math.Pow(screen.Y-rotate.Y,2))<=12){_selectionDragMode=SelectionDragMode.Rotate;_transformPivot=new((bounds.MinX+bounds.MaxX)/2,(bounds.MinY+bounds.MaxY)/2);_transformStart=Doc(screen);_transformPreview=Matrix2D.Identity;return true;}return false;
+        if(Selection.Count==0||SelectedBounds() is not{} bounds)return false;var corners=new[]{new Point2D(bounds.MinX,bounds.MinY),new Point2D(bounds.MaxX,bounds.MinY),new Point2D(bounds.MaxX,bounds.MaxY),new Point2D(bounds.MinX,bounds.MaxY)};var cornerScreens=corners.Select(Screen).ToArray();var corner=Enumerable.Range(0,4).OrderBy(i=>Math.Sqrt(Math.Pow(screen.X-cornerScreens[i].X,2)+Math.Pow(screen.Y-cornerScreens[i].Y,2))).First();if(Math.Sqrt(Math.Pow(screen.X-cornerScreens[corner].X,2)+Math.Pow(screen.Y-cornerScreens[corner].Y,2))<=11){_selectionDragMode=SelectionDragMode.Scale;_transformStart=corners[corner];_transformPivot=corners[(corner+2)%4];_uniformScale=!modifiers.HasFlag(KeyModifiers.Alt);_transformPreview=Matrix2D.Identity;return true;}var topMid=new Point((cornerScreens[2].X+cornerScreens[3].X)/2,(cornerScreens[2].Y+cornerScreens[3].Y)/2);var center=new Point(cornerScreens.Average(x=>x.X),cornerScreens.Average(x=>x.Y));var direction=new Vector(topMid.X-center.X,topMid.Y-center.Y);var length=direction.Length;if(length>1e-6){var rotate=new Point(topMid.X+direction.X/length*28,topMid.Y+direction.Y/length*28);if(Math.Sqrt(Math.Pow(screen.X-rotate.X,2)+Math.Pow(screen.Y-rotate.Y,2))<=12){_selectionDragMode=SelectionDragMode.Rotate;_transformPivot=new((bounds.MinX+bounds.MaxX)/2,(bounds.MinY+bounds.MaxY)/2);_transformStart=Doc(screen);_transformPreview=Matrix2D.Identity;return true;}}return false;
     }
     private static double DistanceToEntity(Point2D point,CadEntity entity){var paths=entity is VectorPathEntity vector?vector.Figures.Select(f=>(IReadOnlyList<Point2D>)VectorPathGeometry.Flatten(VectorPathGeometry.Transform([f],vector.Transform),.01)).ToArray():[(IReadOnlyList<Point2D>)EntityGeometry.WorldPoints(entity)];var best=double.MaxValue;foreach(var path in paths)for(var i=1;i<path.Count;i++){var d=path[i]-path[i-1];var length=d.X*d.X+d.Y*d.Y;var t=length<1e-12?0:Math.Clamp(((point.X-path[i-1].X)*d.X+(point.Y-path[i-1].Y)*d.Y)/length,0,1);best=Math.Min(best,point.DistanceTo(new(path[i-1].X+d.X*t,path[i-1].Y+d.Y*t)));}return best;}
+    private void UpdateTrimCandidate(Point2D point){var hits=EntityHitTester.HitTestAll(Document.Entities.Where(IsEditable),point,8/_viewport.Zoom);var target=hits.Select((entity,index)=>(Entity:entity,Index:index,Distance:DistanceToEntity(point,entity))).OrderBy(x=>x.Distance).ThenBy(x=>x.Index).FirstOrDefault().Entity;_trimCandidate=target is null?null:_trimService.FindCandidate(target,Document.Entities.Where(IsEditable),point,8/_viewport.Zoom);}
+    private bool IsLeftPress(PointerPressedEventArgs e){var properties=e.GetCurrentPoint(this).Properties;return properties.IsLeftButtonPressed||properties.PointerUpdateKind==PointerUpdateKind.LeftButtonPressed;}
     private void OnWheel(object? sender, PointerWheelEventArgs e)
     {
         var screen=e.GetPosition(this);if(ToolpathPreviewMode){BeginInteractivePreview();_camera.ZoomBy(e.Delta.Y>0?1.15:1/1.15);InvalidateVisual();return;}_cursorScreen=screen;_viewport.SetZoom(_viewport.Zoom*(e.Delta.Y>0?1.15:1/1.15),new(screen.X,screen.Y),Bounds.Height);_cursorDocument=Snapped(Doc(screen));PointerStatusChanged?.Invoke(_cursorDocument.Value,_viewport.Zoom);ReportInteraction();InvalidateVisual();

@@ -13,6 +13,11 @@ namespace CncCad.Core.Tests;
 
 public class GuidedWorkspaceTests
 {
+    [Fact] public void GuidedMode_IsTheDefaultAndAdvancedModeIsExplicit()
+    {
+        var vm=ViewModel();Assert.False(vm.IsAdvancedMode);vm.IsAdvancedMode=true;Assert.True(vm.IsAdvancedMode);
+    }
+
     [Fact] public void Workflow_AdvancesFromSetupThroughPreview()
     {
         var vm = ViewModel(); Assert.StartsWith("1", vm.WorkflowStage);
@@ -34,6 +39,68 @@ public class GuidedWorkspaceTests
         var vm = ViewModel(); vm.CreateJob(new JobSettings { WidthMm = 600, HeightMm = 400 }); var rectangle = new RectangleEntity { LayerId = vm.Document.ActiveLayerId, Origin = new(0,0), Width = 100, Height = 40 }; vm.AddEntity(rectangle);
         vm.CenterSelectionOnMaterial(); Assert.Equal(new Point2D(250,180), rectangle.Origin);
         vm.Undo(); Assert.Equal(new Point2D(0,0), rectangle.Origin);
+    }
+
+    [Fact] public void JoinChainsBothEndsInAnySelectionOrderAndIsUndoable()
+    {
+        var vm=ViewModel();vm.CreateJob(new JobSettings());var group=Guid.NewGuid();var middle=new LineEntity{LayerId=vm.Document.ActiveLayerId,Start=new(10,0),End=new(20,0),GroupId=group,StrokeColor="#FF0000"};var tail=new LineEntity{LayerId=vm.Document.ActiveLayerId,Start=new(20,0),End=new(30,0)};var head=new LineEntity{LayerId=vm.Document.ActiveLayerId,Start=new(0,0),End=new(10,0)};vm.AddEntity(middle);vm.AddEntity(tail);vm.AddEntity(head);vm.Selection.Set([middle.Id,tail.Id,head.Id]);vm.SelectionChanged();vm.JoinSelection();
+        var joined=Assert.IsType<PolylineEntity>(Assert.Single(vm.Document.Entities));Assert.Equal(middle.Id,joined.Id);Assert.Equal([new Point2D(0,0),new Point2D(10,0),new Point2D(20,0),new Point2D(30,0)],joined.Points);Assert.Equal(group,joined.GroupId);Assert.Equal("#FF0000",joined.StrokeColor);vm.Undo();Assert.Equal(3,vm.Document.Entities.Count);
+    }
+
+    [Fact] public void ChamferAndExactFilletAreUndoableAndInvalidateDependentToolpaths()
+    {
+        var vm=ViewModel();vm.CreateJob(new JobSettings{WidthMm=100,HeightMm=100,ThicknessMm=12});var contour=new PolylineEntity{LayerId=vm.Document.ActiveLayerId,Points=[new(10,10),new(70,10),new(70,60),new(10,60)],IsClosed=true};vm.AddEntity(contour);var operation=vm.CreateProfileDraft();vm.AddOperation(operation);Assert.Equal(OperationStatus.Current,operation.Status);Assert.True(vm.CanUseChamferFillet);
+        vm.CornerIndex=1;vm.ChamferDistance=4;vm.ChamferSelection();var chamfered=Assert.IsType<PolylineEntity>(Assert.Single(vm.Document.Entities));Assert.Equal(5,chamfered.Points.Count);Assert.Equal(OperationStatus.Stale,operation.Status);vm.Undo();Assert.IsType<PolylineEntity>(Assert.Single(vm.Document.Entities));
+        vm.Selection.Set(contour.Id);vm.SelectionChanged();vm.FilletRadius=4;vm.FilletSelection();var filleted=Assert.IsType<VectorPathEntity>(Assert.Single(vm.Document.Entities));Assert.Contains(filleted.Figures[0].Segments,segment=>segment is ArcPathSegment);Assert.Equal(OperationStatus.Stale,operation.Status);vm.Undo();Assert.IsType<PolylineEntity>(Assert.Single(vm.Document.Entities));
+    }
+
+    [Fact] public void SignedOpenOffsetIsAvailableAndUndoableForAnOpenVector()
+    {
+        var vm=ViewModel();vm.CreateJob(new JobSettings{WidthMm=100,HeightMm=100});var source=new PolylineEntity{LayerId=vm.Document.ActiveLayerId,Points=[new(10,10),new(50,10),new(50,40)]};vm.AddEntity(source);Assert.True(vm.CanOffsetSelection);vm.OffsetDistance=3;vm.OffsetJoin=CncCad.Cam.Profile.CadOffsetJoin.Miter;vm.OffsetSelection();var offset=Assert.IsType<PolylineEntity>(vm.Document.Entities.Single(entity=>entity.Id!=source.Id));Assert.Equal([new Point2D(10,13),new Point2D(47,13),new Point2D(47,40)],offset.Points);vm.Undo();Assert.Single(vm.Document.Entities);Assert.Same(source,vm.Document.Entities[0]);
+    }
+
+    [Fact] public void PocketHelixIsExposedOnlyThroughTheContainmentCheckedCalculator()
+    {
+        var vm=ViewModel();vm.CreateJob(new JobSettings{WidthMm=120,HeightMm=100,ThicknessMm=12});var boundary=new RectangleEntity{LayerId=vm.Document.ActiveLayerId,Origin=new(10,10),Width=80,Height=60};vm.AddEntity(boundary);Assert.Contains(PocketEntryMode.Helix,vm.PocketEntryModes);var pocket=vm.CreatePocketDraft();pocket.EntryMode=PocketEntryMode.Helix;pocket.RampLengthMm=10;pocket.CutDepthMm=2;pocket.PassDepthMm=2;vm.AddOperation(pocket);Assert.Equal(OperationStatus.Current,pocket.Status);Assert.NotEmpty(pocket.CalculatedToolpath!.Moves.OfType<CncCad.Cam.Toolpaths.ArcMove>());
+    }
+
+    [Fact] public void VCarveUnlockRequiresClosedOutlinesAndAValidVBit()
+    {
+        var vm=ViewModel();vm.CreateJob(new JobSettings{WidthMm=120,HeightMm=100,ThicknessMm=12});var outline=new RectangleEntity{LayerId=vm.Document.ActiveLayerId,Origin=new(10,10),Width=80,Height=60};vm.AddEntity(outline);Assert.False(vm.CanCreateVCarve);vm.SelectedTool=new(){Name="60 degree V-bit",Type=ToolType.VBit,DiameterMm=8,VBitAngleDegrees=60,TipDiameterMm=.2,FeedRateMmPerMin=800,PlungeRateMmPerMin=200,SpindleRpm=16000,StepDownMm=2};Assert.True(vm.CanCreateVCarve);var carve=vm.CreateVCarveDraft();vm.AddOperation(carve);Assert.Equal(OperationStatus.Current,carve.Status);Assert.NotEmpty(carve.CalculatedToolpath!.Moves);var open=new LineEntity{LayerId=vm.Document.ActiveLayerId,Start=new(0,0),End=new(10,0)};vm.AddEntity(open);Assert.False(vm.CanCreateVCarve);Assert.Contains("closed",vm.VCarveGuidance,StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact] public void PolylineNodeSelectionInsertionDeletionAndStartChangesAreTruthfulAndUndoable()
+    {
+        var vm=ViewModel();vm.CreateJob(new JobSettings{WidthMm=100,HeightMm=100,ThicknessMm=12});var path=new PolylineEntity{LayerId=vm.Document.ActiveLayerId,Transform=Matrix2D.Translation(5,7),Points=[new(0,0),new(20,0),new(20,10),new(0,10)],IsClosed=true};vm.AddEntity(path);vm.SelectNode(path,1,path.Transform.Transform(path.Points[1]));Assert.True(vm.HasActiveNode);Assert.True(vm.CanInsertNode);Assert.True(vm.CanDeleteNode);Assert.True(vm.CanMakeStartNode);vm.InsertNode();Assert.Equal(5,path.Points.Count);Assert.Equal(new Point2D(20,5),path.Points[2]);vm.Undo();Assert.Equal(4,path.Points.Count);
+        vm.Selection.Set(path.Id);vm.SelectionChanged();vm.SelectNode(path,2,path.Transform.Transform(path.Points[2]));vm.MakeStartNode();Assert.Equal(new Point2D(20,10),path.Points[0]);vm.Undo();Assert.Equal(new Point2D(0,0),path.Points[0]);vm.Selection.Set(path.Id);vm.SelectionChanged();vm.SelectNode(path,1,path.Transform.Transform(path.Points[1]));vm.DeleteNode();Assert.Equal(3,path.Points.Count);Assert.False(vm.HasActiveNode);Assert.False(vm.CanDeleteNode);vm.Undo();Assert.Equal(4,path.Points.Count);
+    }
+
+    [Fact] public void BezierHandlePositionIsEditableWhileUnsupportedTopologyActionsStayDisabled()
+    {
+        var vm=ViewModel();vm.CreateJob(new JobSettings());var path=new VectorPathEntity{LayerId=vm.Document.ActiveLayerId,Figures=[new(){Start=new(0,0),Segments=[new CubicPathSegment(new(5,10),new(15,10),new(20,0))]}]};vm.AddEntity(path);vm.SelectNode(path,1,new(5,10));Assert.True(vm.HasActiveNode);Assert.False(vm.CanInsertNode);Assert.False(vm.CanDeleteNode);Assert.False(vm.CanMakeStartNode);vm.NodeX=6;vm.NodeY=12;vm.ApplyNodePosition();Assert.Equal(new Point2D(6,12),Assert.IsType<CubicPathSegment>(path.Figures[0].Segments[0]).Control1);vm.Undo();Assert.Equal(new Point2D(5,10),Assert.IsType<CubicPathSegment>(path.Figures[0].Segments[0]).Control1);
+    }
+
+    [Fact] public void RepairApplyIsEnabledOnlyForCurrentUnambiguousPreviewAndIsUndoable()
+    {
+        var vm=ViewModel();vm.CreateJob(new JobSettings());var path=new PolylineEntity{LayerId=vm.Document.ActiveLayerId,Points=[new(0,0),new(.001,0),new(10,0)]};vm.AddEntity(path);Assert.False(vm.CanApplyRepair);vm.MinimumSegment=.01;vm.AnalyzeRepair();Assert.True(vm.CanApplyRepair);vm.ApplyRepair();Assert.False(vm.CanApplyRepair);Assert.Equal(2,Assert.IsType<PolylineEntity>(Assert.Single(vm.Document.Entities)).Points.Count);vm.Undo();Assert.Equal(3,Assert.IsType<PolylineEntity>(Assert.Single(vm.Document.Entities)).Points.Count);
+        vm.Selection.Set(path.Id);vm.SelectionChanged();vm.AnalyzeRepair();Assert.True(vm.CanApplyRepair);vm.NudgeSelection(1,0);Assert.False(vm.CanApplyRepair);Assert.Empty(vm.RepairIssues);
+    }
+
+    [Fact] public void LayerCreationFlagsOrderingAndEntityMovesAreUndoable()
+    {
+        var vm=ViewModel();vm.CreateJob(new JobSettings());var original=vm.Document.ActiveLayerId;var entity=new LineEntity{LayerId=original,End=new(10,0)};vm.AddEntity(entity);vm.AddLayer();var added=vm.Document.ActiveLayerId;Assert.NotEqual(original,added);vm.MoveSelectionToLayer();Assert.Equal(added,entity.LayerId);vm.Undo();Assert.Equal(original,entity.LayerId);vm.ToggleLayerVisibility();Assert.False(vm.SelectedLayer!.IsVisible);vm.Undo();Assert.True(vm.Document.Layers.Single(layer=>layer.Id==added).IsVisible);vm.Undo();Assert.DoesNotContain(vm.Document.Layers,layer=>layer.Id==added);vm.Redo();Assert.Contains(vm.Document.Layers,layer=>layer.Id==added);vm.SelectedLayer=vm.Document.Layers.Single(layer=>layer.Id==added);vm.LayerNameDraft="Cut vectors";vm.LayerColorDraft="#123456";vm.CommitLayerProperties();Assert.Equal("Cut vectors",vm.SelectedLayer.Name);vm.Undo();Assert.NotEqual("Cut vectors",vm.Document.Layers.Single(layer=>layer.Id==added).Name);
+    }
+
+    [Fact] public void ReacceptingANestReplacesTheInstalledLayoutInsteadOfDuplicatingIt()
+    {
+        var vm=ViewModel();vm.CreateJob(new JobSettings{WidthMm=120,HeightMm=120,ThicknessMm=18});
+        var source=new RectangleEntity{LayerId=vm.Document.ActiveLayerId,Origin=new(5,5),Width=40,Height=30};vm.AddEntity(source);vm.NestQuantity=2;vm.AddNestPartsFromSelection();
+        var first=vm.OptimizeNest();Assert.True(first.Success);Assert.True(vm.CanAcceptNest);vm.AcceptNest();Assert.False(vm.CanAcceptNest);
+        var firstIds=vm.Document.Entities.Where(entity=>entity.MaterialSheetId is not null).Select(entity=>entity.Id).ToHashSet();Assert.Equal(2,firstIds.Count);
+        var second=vm.OptimizeNest();Assert.True(second.Success);vm.AcceptNest();
+        var installed=vm.Document.Entities.Where(entity=>entity.MaterialSheetId is not null).ToArray();var secondIds=installed.Select(entity=>entity.Id).ToHashSet();Assert.Equal(2,installed.Length);Assert.DoesNotContain(installed,entity=>firstIds.Contains(entity.Id));Assert.Single(vm.Document.Layers,layer=>layer.Name.StartsWith("Sheet ",StringComparison.Ordinal));
+        vm.Undo();Assert.Equal(firstIds,vm.Document.Entities.Where(entity=>entity.MaterialSheetId is not null).Select(entity=>entity.Id).ToHashSet());Assert.Equal(CncCad.Cam.Nesting.NestingLayoutStatus.Current,vm.NestingJob.Status);
+        vm.Redo();Assert.Equal(secondIds,vm.Document.Entities.Where(entity=>entity.MaterialSheetId is not null).Select(entity=>entity.Id).ToHashSet());Assert.Equal(CncCad.Cam.Nesting.NestingLayoutStatus.Current,vm.NestingJob.Status);
     }
 
     [Fact] public void FocusAndViewChoices_AreExplicitState()
@@ -134,15 +201,15 @@ public class GuidedWorkspaceTests
         var missing=Path.Combine(Path.GetTempPath(),$"missing-{Guid.NewGuid():N}.cnccad");await Assert.ThrowsAsync<FileNotFoundException>(()=>vm.OpenProjectAsync(missing));Assert.Equal(segmentCount,vm.Playback.Frame.Segments.Count);
     }
 
-    [Fact] public async Task ModernDoor_ReopensAndExportsSelectedCombinedAndSeparateUccncPrograms()
+    [Fact] public async Task ModernDoor_ReopensAndBlocksCombinedMultiToolOutputForManualRouter()
     {
         var path=Path.Combine(Path.GetTempPath(),$"modern-door-{Guid.NewGuid():N}.cnccad");
         try
         {
             await using(var stream=File.Create(path))await new JsonProjectSerializer().SaveAsync(ModernDoorAcceptanceProject.Create(),stream);
             var vm=ViewModel();await vm.OpenProjectAsync(path);vm.SelectedOperation=vm.Operations[0];
-            var selected=vm.GenerateExportPrograms(ToolpathExportScope.SelectedToolpath);var combined=vm.GenerateExportPrograms(ToolpathExportScope.VisibleCombined);var separate=vm.GenerateExportPrograms(ToolpathExportScope.VisibleSeparateFiles);
-            Assert.Single(selected);Assert.Single(combined);Assert.Equal(5,separate.Count);Assert.All([..selected,..combined,..separate],file=>{Assert.Equal(".nc",file.Extension);Assert.Contains("M30",file.Text);});
+            var selected=vm.GenerateExportPrograms(ToolpathExportScope.SelectedToolpath);var blocked=Assert.Throws<InvalidOperationException>(()=>vm.GenerateExportPrograms(ToolpathExportScope.VisibleCombined));var separate=vm.GenerateExportPrograms(ToolpathExportScope.VisibleSeparateFiles);
+            Assert.Contains("separate files",blocked.Message,StringComparison.OrdinalIgnoreCase);Assert.Single(selected);Assert.Equal(5,separate.Count);Assert.All([..selected,..separate],file=>{Assert.Equal(".tap",file.Extension);Assert.Contains("M30",file.Text);});
         }
         finally{if(File.Exists(path))File.Delete(path);}
     }

@@ -1,4 +1,6 @@
 using System.Text.Json;
+using CncCad.Cam.Safety;
+using CncCad.Core.Documents;
 
 namespace CncCad.IO.Projects;
 
@@ -33,7 +35,7 @@ public sealed class JsonProjectSerializer : IProjectSerializer
         var version = versionElement.GetInt32();
         if (version < 1) throw new InvalidDataException($"Project version {version} is invalid.");
         if (version > CncProject.CurrentVersion) throw new NotSupportedException($"Project version {version} is newer than supported version {CncProject.CurrentVersion}.");
-        if (version <= 1)
+        if (version <= 1 && !json.RootElement.TryGetProperty("document", out _))
         {
             var document = json.RootElement.Deserialize<CncCad.Core.Documents.CadDocument>(Options) ?? throw new InvalidDataException("Project document is empty.");
             var legacy = new CncProject { Version = CncProject.CurrentVersion, Document = document, CamJob = new() { SafetySetupIncomplete = true } };
@@ -42,14 +44,35 @@ public sealed class JsonProjectSerializer : IProjectSerializer
         }
         var project = json.RootElement.Deserialize<CncProject>(Options) ?? throw new InvalidDataException("Project is empty.");
         Validate(project);
-        project.Version = CncProject.CurrentVersion;
         if (version <= 3)
         {
-            project.Version = CncProject.CurrentVersion;
             project.CamJob.SafetySetupIncomplete = true;
         }
+        if(version<=8&&project.CamJob.Machine is{} machine)
+        {
+            project.CamJob.Machine=machine with
+            {
+                PostProcessorId=NormalizePostId(machine.PostProcessorId),
+                ControllerFamily=ControllerFor(machine.PostProcessorId),
+                OutputUnit=machine.PostProcessorId.EndsWith("-inch",StringComparison.OrdinalIgnoreCase)?MeasurementUnit.Inches:MeasurementUnit.Millimetres,
+                SupportsArcs=true,
+                ToolChangeMode=MachineToolChangeMode.SeparateFiles
+            };
+        }
+        project.Version = CncProject.CurrentVersion;
         return project;
     }
+
+    private static ControllerFamily ControllerFor(string postId)=>postId.ToLowerInvariant() switch
+    {
+        var id when id.StartsWith("mach3")=>ControllerFamily.Mach3,
+        var id when id.StartsWith("mach4")=>ControllerFamily.Mach4,
+        var id when id.StartsWith("grbl")=>ControllerFamily.Grbl,
+        var id when id.StartsWith("linuxcnc")=>ControllerFamily.LinuxCnc,
+        var id when id.StartsWith("uccnc")=>ControllerFamily.Uccnc,
+        _=>ControllerFamily.Community
+    };
+    private static string NormalizePostId(string postId)=>postId.Equals("uccnc-mm",StringComparison.OrdinalIgnoreCase)?"uccnc":postId;
 
     private static void Validate(CncProject project)
     {

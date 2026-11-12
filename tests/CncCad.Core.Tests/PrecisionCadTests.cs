@@ -41,6 +41,12 @@ public sealed class PrecisionCadTests
         Assert.Equal(center.X-expectedX,bounds.MinX,9);Assert.Equal(center.Y+expectedY,bounds.MaxY,9);
     }
 
+    [Fact]
+    public void TransformedArcWorldGeometryAppliesItsTransformExactlyOnce()
+    {
+        var arc=new ArcEntity{Center=new(2,3),Radius=10,StartAngleDegrees=0,SweepAngleDegrees=90,Transform=Matrix2D.Translation(20,30)};var points=EntityGeometry.WorldPoints(arc);Assert.Equal(new Point2D(32,33),points[0]);Assert.Equal(22,points[^1].X,9);Assert.Equal(43,points[^1].Y,9);var endpoints=EntityGeometry.Endpoints(arc);Assert.Equal(32,endpoints[0].X,9);Assert.Equal(33,endpoints[0].Y,9);Assert.Equal(22,endpoints[1].X,9);Assert.Equal(43,endpoints[1].Y,9);var midpoint=Assert.Single(EntityGeometry.Midpoints(arc));Assert.Equal(22+10/Math.Sqrt(2),midpoint.X,9);Assert.Equal(33+10/Math.Sqrt(2),midpoint.Y,9);var bounds=arc.GetBounds();Assert.Equal(22,bounds.MinX,9);Assert.Equal(33,bounds.MinY,9);Assert.Equal(32,bounds.MaxX,9);Assert.Equal(43,bounds.MaxY,9);
+    }
+
     [Theory]
     [InlineData("part.nc",".txt","part.txt")]
     [InlineData("part",".tap","part.tap")]
@@ -50,7 +56,7 @@ public sealed class PrecisionCadTests
     }
     [Theory]
     [InlineData("Cabinet:Side/One", "Cabinet_Side_One")]
-    [InlineData("...", "cnc-program")]
-    [InlineData("", "cnc-program")]
+    [InlineData("...", "v-router-program")]
+    [InlineData("", "v-router-program")]
     public void Export_File_Stem_Is_Portable(string input,string expected)=>Assert.Equal(expected,GCodeExportFormat.SafeFileStem(input));
 }

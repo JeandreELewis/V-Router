@@ -8,7 +8,7 @@ The application is split into framework-independent Core, CAM and PostProcessor 
 
 ## Current phase
 
-Public-alpha hardening of the project-v8 multi-operation CNC router workflow.
+Production 1.0 candidate hardening of the project-v9, 3-axis 2.5D CNC-router workflow.
 
 ## Completed
 
@@ -97,7 +97,7 @@ Public-alpha hardening of the project-v8 multi-operation CNC router workflow.
 - Exact trim/split/extend/weld does not yet cover every arc, ellipse and Bézier combination.
 - Common-line cutting and arbitrary-angle nesting rotation remain deferred.
 - The complete licensed centerline-font catalog and font favorites/recent persistence remain content tasks.
-- UCCNC is currently the only production postprocessor.
+- All five built-in posts remain certification-pending until parser and documented air-cut evidence is reviewed.
 - UI automation and hardware acceptance coverage remain smaller than the engine test suite.
 
 ## Testing status
@@ -109,7 +109,7 @@ Core/IO/Infrastructure/Rendering sessions: distance, bounds, rotation, viewport 
 - Project: `.cnccad` JSON save/open UI
 - G-code export: `.txt`, `.nc`, `.tap`
 - SVG/DXF: import implemented with documented advanced-DXF limitations
-- Tool import/export: planned
+- Tool/library import/export: JSON package and tool CSV implemented
 
 ## Supported toolpaths
 
@@ -119,7 +119,7 @@ Core/IO/Infrastructure/Rendering sessions: distance, bounds, rotation, viewport 
 
 ## Supported postprocessors
 
-- UCCNC
+- UCCNC, Mach3, Mach4, GRBL and LinuxCNC built-in definitions (certification pending)
 
 ## Vector import and advanced drawing milestone
 

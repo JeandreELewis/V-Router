@@ -22,13 +22,18 @@ public sealed class SkiaTextOutlineService:ITextOutlineService
     {
         if(string.IsNullOrWhiteSpace(request.Text)||request.SizeMm<=0)throw new ArgumentException("Text and a positive size are required.");
         if(request.FontFamily.StartsWith("Hershey",StringComparison.OrdinalIgnoreCase))return HersheyStrokeService.Create(request);
-        using var typeface=SKTypeface.FromFamilyName(request.FontFamily)??throw new InvalidOperationException($"Font '{request.FontFamily}' is not installed.");using var font=new SKFont(typeface,(float)request.SizeMm);var figures=new List<VectorPathFigure>();var advances=new List<double>();var generated=new List<GeneratedGlyph>();var x=(float)request.Origin.X;var y=(float)request.Origin.Y;var order=0;
-        foreach(var rune in request.Text.EnumerateRunes())
+        var requestedStyle=ResolveStyle(request.FontStyle);using var typeface=SKTypeface.FromFamilyName(request.FontFamily,requestedStyle)??throw new InvalidOperationException($"Font '{request.FontFamily}' is not installed.");using var font=new SKFont(typeface,(float)request.SizeMm);var figures=new List<VectorPathFigure>();var advances=new List<double>();var generated=new List<GeneratedGlyph>();var warnings=new List<string>();var order=0;var lines=request.Text.Replace("\r\n","\n").Replace('\r','\n').Split('\n');
+        for(var lineIndex=0;lineIndex<lines.Length;lineIndex++)
         {
-            if(rune.Value=='\n'){x=(float)request.Origin.X;y-=(float)(request.SizeMm*request.LineSpacing);continue;}var glyphs=font.GetGlyphs(rune.ToString());if(glyphs.Length==0)continue;var glyph=glyphs[0];using var path=font.GetGlyphPath(glyph);var width=font.GetGlyphWidths([glyph])[0];var advance=width+request.LetterSpacingMm;advances.Add(advance);var glyphFigures=path is null?[]:Convert(path,x,y).ToList();figures.AddRange(glyphFigures);generated.Add(new(rune.ToString(),advance,glyphFigures,order++));x+=width+(float)request.LetterSpacingMm;
+            var measured=lines[lineIndex].EnumerateRunes().Select(rune=>{var glyphs=font.GetGlyphs(rune.ToString());var glyph=glyphs.Length==0?(ushort)0:glyphs[0];var width=glyph==0?0:font.GetGlyphWidths([glyph])[0];return(Rune:rune,Glyph:glyph,Width:width,Advance:(double)width+request.LetterSpacingMm);}).ToArray();var lineWidth=measured.Length==0?0:measured.Sum(item=>item.Advance)-request.LetterSpacingMm;var x=(float)(request.Origin.X-(request.Alignment switch{TextAlignment.Center=>lineWidth/2,TextAlignment.Right=>lineWidth,_=>0}));var y=(float)(request.Origin.Y-lineIndex*request.SizeMm*request.LineSpacing);
+            foreach(var item in measured)
+            {
+                using var path=item.Glyph==0?null:font.GetGlyphPath(item.Glyph);if(item.Glyph==0||path is null){warnings.Add($"Font '{request.FontFamily}' has no outline for '{item.Rune}'.");x+=(float)item.Advance;continue;}advances.Add(item.Advance);var glyphFigures=Convert(path,x,y).ToList();figures.AddRange(glyphFigures);generated.Add(new(item.Rune.ToString(),item.Advance,glyphFigures,order++));x+=(float)item.Advance;
+            }
         }
-        if(figures.Count==0)throw new InvalidOperationException($"Font '{request.FontFamily}' produced no vector outlines for this text.");return new(figures,[],advances,FontKind.Outline,generated);
+        if(figures.Count==0)throw new InvalidOperationException($"Font '{request.FontFamily}' produced no vector outlines for this text.");return new(figures,warnings.Distinct().ToArray(),advances,FontKind.Outline,generated);
     }
+    private static SKFontStyle ResolveStyle(string style){var bold=style.Contains("bold",StringComparison.OrdinalIgnoreCase);var italic=style.Contains("italic",StringComparison.OrdinalIgnoreCase)||style.Contains("oblique",StringComparison.OrdinalIgnoreCase);return bold&&italic?SKFontStyle.BoldItalic:bold?SKFontStyle.Bold:italic?SKFontStyle.Italic:SKFontStyle.Normal;}
     private static IEnumerable<VectorPathFigure> Convert(SKPath path,float x,float y)
     {
         var output=new List<VectorPathFigure>();VectorPathFigure? figure=null;var points=new SKPoint[4];using var iterator=path.CreateRawIterator();while(true){var verb=iterator.Next(points);if(verb==SKPathVerb.Done)break;Point2D P(SKPoint p)=>new(x+p.X,y-p.Y);switch(verb){case SKPathVerb.Move:if(figure is not null)output.Add(figure);figure=new(){Start=P(points[0])};break;case SKPathVerb.Line:figure?.Segments.Add(new LinePathSegment(P(points[1])));break;case SKPathVerb.Quad:figure?.Segments.Add(new QuadraticPathSegment(P(points[1]),P(points[2])));break;case SKPathVerb.Cubic:figure?.Segments.Add(new CubicPathSegment(P(points[1]),P(points[2]),P(points[3])));break;case SKPathVerb.Close:if(figure is not null)figure.IsClosed=true;break;}}if(figure is not null)output.Add(figure);return output;
@@ -39,9 +44,9 @@ internal static class HersheyStrokeService
 {
     public static TextOutlineResult Create(TextOutlineRequest request)
     {
-        var figures=new List<VectorPathFigure>();var advances=new List<double>();var generated=new List<GeneratedGlyph>();var x=request.Origin.X;var size=request.SizeMm;var order=0;foreach(var c in request.Text.ToUpperInvariant()){if(c=='\n'){x=request.Origin.X;continue;}var strokes=Glyph(c);var glyphFigures=new List<VectorPathFigure>();foreach(var stroke in strokes){if(stroke.Length<2)continue;glyphFigures.Add(new(){Start=new(x+stroke[0].X*size,request.Origin.Y+stroke[0].Y*size),Segments=stroke.Skip(1).Select(p=>(VectorPathSegment)new LinePathSegment(new(x+p.X*size,request.Origin.Y+p.Y*size))).ToList()});}figures.AddRange(glyphFigures);var advance=size*.72+request.LetterSpacingMm;advances.Add(advance);generated.Add(new(c.ToString(),advance,glyphFigures,order++));x+=advance;}return new(figures,[],advances,FontKind.SingleLine,generated);
+        var figures=new List<VectorPathFigure>();var advances=new List<double>();var generated=new List<GeneratedGlyph>();var warnings=new List<string>();var size=request.SizeMm;var advance=size*.72+request.LetterSpacingMm;var order=0;var lines=request.Text.ToUpperInvariant().Replace("\r\n","\n").Replace('\r','\n').Split('\n');for(var lineIndex=0;lineIndex<lines.Length;lineIndex++){var lineWidth=Math.Max(0,lines[lineIndex].Length*advance-request.LetterSpacingMm);var x=request.Origin.X-(request.Alignment switch{TextAlignment.Center=>lineWidth/2,TextAlignment.Right=>lineWidth,_=>0});var y=request.Origin.Y-lineIndex*size*request.LineSpacing;foreach(var c in lines[lineIndex]){var strokes=Glyph(c);if(strokes is null){warnings.Add($"Hershey font has no glyph for '{c}'; a visible placeholder was inserted.");strokes=[[new(0,0),new(0,1),new(.6,1),new(.6,0),new(0,0)]];}var glyphFigures=new List<VectorPathFigure>();foreach(var stroke in strokes){if(stroke.Length<2)continue;glyphFigures.Add(new(){Start=new(x+stroke[0].X*size,y+stroke[0].Y*size),Segments=stroke.Skip(1).Select(p=>(VectorPathSegment)new LinePathSegment(new(x+p.X*size,y+p.Y*size))).ToList()});}figures.AddRange(glyphFigures);advances.Add(advance);generated.Add(new(c.ToString(),advance,glyphFigures,order++));x+=advance;}}return new(figures,warnings.Distinct().ToArray(),advances,FontKind.SingleLine,generated);
     }
-    private static Point2D[][] Glyph(char c)=>c switch
+    private static Point2D[][]? Glyph(char c)=>c switch
     {
         'A'=>[[new(0,0),new(.3,1),new(.6,0)],[new(.12,.42),new(.48,.42)]],
         'E'=>[[new(.6,1),new(0,1),new(0,0),new(.6,0)],[new(0,.5),new(.48,.5)]],
@@ -58,6 +63,6 @@ internal static class HersheyStrokeService
         'X'=>[[new(0,1),new(.6,0)],[new(.6,1),new(0,0)]],
         'Y'=>[[new(0,1),new(.3,.5),new(.6,1)],[new(.3,.5),new(.3,0)]],
         ' '=>[],
-        _=>[[new(0,0),new(0,1),new(.6,1),new(.6,0),new(0,0)]]
+        _=>null
     };
 }

@@ -100,12 +100,25 @@ public sealed class SqliteToolLibrary(IDbContextFactory<ToolLibraryDbContext> fa
 
 public static class ToolLibraryInitializer
 {
+    private sealed record LibraryMigration(int Version,string Sql);
+    private static readonly LibraryMigration[] Migrations=
+    [
+        new(1,"ALTER TABLE Tools ADD COLUMN StickOutMm REAL NULL;"),
+        new(2,"ALTER TABLE Machines ADD COLUMN PostProcessorId TEXT NOT NULL DEFAULT 'uccnc';"),
+        new(3,"ALTER TABLE Machines ADD COLUMN ControllerFamily INTEGER NOT NULL DEFAULT 0;"),
+        new(4,"ALTER TABLE Machines ADD COLUMN OutputUnit INTEGER NOT NULL DEFAULT 0;"),
+        new(5,"ALTER TABLE Machines ADD COLUMN SupportsArcs INTEGER NOT NULL DEFAULT 1;"),
+        new(6,"ALTER TABLE Machines ADD COLUMN ToolChangeMode INTEGER NOT NULL DEFAULT 0;"),
+        new(7,"ALTER TABLE Machines ADD COLUMN ToolChangeSeconds REAL NOT NULL DEFAULT 30;"),
+        new(8,"ALTER TABLE Machines ADD COLUMN ParkEnabled INTEGER NOT NULL DEFAULT 0;")
+    ];
+
     public static async Task InitializeAsync(IDbContextFactory<ToolLibraryDbContext> factory)
     {
         await using var db = await factory.CreateDbContextAsync();
         await db.Database.EnsureCreatedAsync();
-        try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE Tools ADD COLUMN StickOutMm REAL NULL;"); } catch (Microsoft.Data.Sqlite.SqliteException exception) when (exception.SqliteErrorCode == 1 && exception.Message.Contains("duplicate column", StringComparison.OrdinalIgnoreCase)) { }
-        try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE Machines ADD COLUMN PostProcessorId TEXT NOT NULL DEFAULT 'uccnc-mm';"); } catch (Microsoft.Data.Sqlite.SqliteException exception) when (exception.SqliteErrorCode == 1 && exception.Message.Contains("duplicate column", StringComparison.OrdinalIgnoreCase)) { }
+        await ApplyMigrationsAsync(db);
+        await db.Database.ExecuteSqlRawAsync("UPDATE Machines SET PostProcessorId = 'uccnc' WHERE lower(PostProcessorId) = 'uccnc-mm';");
         await db.Database.ExecuteSqlRawAsync("""
             CREATE TABLE IF NOT EXISTS Machines (
               Id TEXT NOT NULL PRIMARY KEY, Name TEXT NOT NULL, MinimumXmm REAL NOT NULL, MaximumXmm REAL NOT NULL,
@@ -139,6 +152,18 @@ public static class ToolLibraryInitializer
             new MaterialDefinition{Name="Plywood",Category="Wood composite"},
             new MaterialDefinition{Name="Hardwood",Category="Timber"});
         await db.SaveChangesAsync();
+    }
+    private static async Task ApplyMigrationsAsync(ToolLibraryDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync("CREATE TABLE IF NOT EXISTS __VRouterLibraryMigrations (Version INTEGER NOT NULL PRIMARY KEY, AppliedUtc TEXT NOT NULL);");
+        foreach(var migration in Migrations)
+        {
+            var applied=await db.Database.SqlQuery<int>($"SELECT Version AS Value FROM __VRouterLibraryMigrations WHERE Version = {migration.Version}").AnyAsync();
+            if(applied)continue;
+            try{await db.Database.ExecuteSqlRawAsync(migration.Sql);}
+            catch(Microsoft.Data.Sqlite.SqliteException exception)when(exception.SqliteErrorCode==1&&exception.Message.Contains("duplicate column",StringComparison.OrdinalIgnoreCase)){ }
+            await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO __VRouterLibraryMigrations (Version, AppliedUtc) VALUES ({migration.Version}, CURRENT_TIMESTAMP);");
+        }
     }
     private static IEnumerable<CncTool> SampleTools() =>
     [

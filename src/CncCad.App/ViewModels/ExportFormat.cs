@@ -2,7 +2,7 @@ namespace CncCad.App.ViewModels;
 
 public sealed record GCodeExportFormat(string Label,string Extension)
 {
-    public static IReadOnlyList<GCodeExportFormat> All { get; }=[new("UCCNC .nc",".nc"),new("UCCNC .txt",".txt"),new("UCCNC .tap",".tap")];
+    public static IReadOnlyList<GCodeExportFormat> All { get; }=[new("G-code .nc",".nc"),new("G-code .txt",".txt"),new("G-code .tap",".tap")];
     public string NormalizePath(string path)=>NormalizePath(path,Extension);
     public static string NormalizePath(string path,string extension)
     {
@@ -25,7 +25,7 @@ public sealed record GCodeExportFormat(string Label,string Extension)
     {
         var invalid = Path.GetInvalidFileNameChars().Concat(['<','>',':','"','/','\\','|','?','*']).ToHashSet();
         var safe = new string((value ?? string.Empty).Select(character => char.IsControl(character) || invalid.Contains(character) ? '_' : character).ToArray()).Trim().TrimEnd('.');
-        return string.IsNullOrWhiteSpace(safe) ? "cnc-program" : safe;
+        return string.IsNullOrWhiteSpace(safe) ? "v-router-program" : safe;
     }
     public override string ToString()=>Label;
 }

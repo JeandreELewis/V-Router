@@ -1,6 +1,7 @@
 bin/
 obj/
 artifacts/
+.wix/
 .vs/
 .DS_Store
 *.user

@@ -1,6 +1,7 @@
 using CncCad.Cam.Toolpaths;
 using CncCad.Core.Geometry;
 using CncCad.Simulation.Playback;
+using CncCad.Simulation.MachineTime;
 
 namespace CncCad.Cam.Tests;
 
@@ -32,6 +33,11 @@ public class PlaybackTests
     {
         var first = Operation(new LinearMove(new(10,0),0,100)); first.Name="First"; var second = Operation(new LinearMove(new(20,0),0,100)); second.Name="Second"; var session = new ToolpathPlaybackSession(); session.Load([new(first,6),new(second,3)]);
         Assert.Equal([first.SourceOperationId, second.SourceOperationId], session.Frame.Segments.Select(s=>s.OperationId)); Assert.Equal(["First","Second"], session.Frame.Segments.Select(s=>s.OperationName));
+    }
+    [Fact] public void PlaybackAndEstimateShareArcDwellAndToolChangeTiming()
+    {
+        var operation=Operation(new ToolChange(1,"Tool"),new RapidMove(new(10,0),0),new ArcMove(new(0,10),new(0,0),0,60,false),new DwellMove(2));var program=new ToolpathProgram{Operations=[operation]};var session=new ToolpathPlaybackSession();session.Load([new(operation,6)],5000,3);
+        Assert.Equal(MachineTimeEstimator.Estimate(program,5000,3),session.TotalTime);Assert.Contains(session.Frame.Segments,segment=>segment.Kind==PlaybackMoveKind.Dwell&&segment.Duration==TimeSpan.FromSeconds(2));
     }
     private static ToolpathPlaybackSession Load(ToolpathOperation operation) { var session = new ToolpathPlaybackSession(); session.Load([new(operation,6)]); return session; }
     private static ToolpathOperation Operation(params ToolpathMove[] moves) => new() { SourceOperationId = Guid.NewGuid(), Name = "Profile", Moves = [..moves] };

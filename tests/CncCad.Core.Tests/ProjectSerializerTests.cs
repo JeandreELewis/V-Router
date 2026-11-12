@@ -52,12 +52,12 @@ public class ProjectSerializerTests
     public async Task RoundTrip_PreservesEverySupportedEntityType()
     {
         var document = new CadDocument(); var layer = document.ActiveLayerId;
-        var figure=new VectorPathFigure{Start=new(0,0),IsClosed=true,Segments=[new CubicPathSegment(new(1,0),new(1,1),new(0,1)),new LinePathSegment(new(0,0))]};
+        var figure=new VectorPathFigure{Start=new(0,0),IsClosed=true,Segments=[new CubicPathSegment(new(1,0),new(1,1),new(0,1)),new ArcPathSegment(new(1,1),90,new(1,0)),new LinePathSegment(new(0,0))]};
         document.Entities.AddRange([new LineEntity { LayerId = layer, Start = new(1,2), End = new(3,4) }, new PolylineEntity { LayerId = layer, Points = [new(1,1), new(2,2), new(3,1)], IsClosed = true }, new RectangleEntity { LayerId = layer, Origin = new(4,5), Width = 6, Height = 7 }, new CircleEntity { LayerId = layer, Center = new(8,9), Radius = 3 }, new ArcEntity { LayerId = layer, Center = new(10,10), Radius = 5, StartAngleDegrees = 20, SweepAngleDegrees = 140 }, new EllipseEntity { LayerId = layer, Center = new(12,13), RadiusX = 6, RadiusY = 2 },new VectorPathEntity{LayerId=layer,Figures=[figure]},new TextEntity{LayerId=layer,Text="CNC",SizeMm=12,Outlines=[figure]}]);
         EntityGeometry.Translate(document.Entities[0], new(10, 20));
         var serializer = new JsonProjectSerializer(); await using var stream = new MemoryStream(); await serializer.SaveAsync(new CncProject { Document = document }, stream); stream.Position = 0; var loaded = await serializer.LoadAsync(stream);
         Assert.Collection(loaded.Document.Entities, e => Assert.IsType<LineEntity>(e), e => Assert.IsType<PolylineEntity>(e), e => Assert.IsType<RectangleEntity>(e), e => Assert.IsType<CircleEntity>(e), e => Assert.IsType<ArcEntity>(e), e => Assert.IsType<EllipseEntity>(e),e=>Assert.IsType<VectorPathEntity>(e),e=>Assert.IsType<TextEntity>(e));
-        Assert.Equal(new Point2D(11,22), ((LineEntity)loaded.Document.Entities[0]).Start);
+        Assert.Equal(new Point2D(11,22), ((LineEntity)loaded.Document.Entities[0]).Start);var restoredPath=Assert.IsType<VectorPathEntity>(loaded.Document.Entities[6]);var restoredArc=Assert.IsType<ArcPathSegment>(restoredPath.Figures[0].Segments[1]);Assert.Equal(90,restoredArc.SweepAngleDegrees);Assert.Equal(new Point2D(1,1),restoredArc.Center);
     }
 
     [Fact]

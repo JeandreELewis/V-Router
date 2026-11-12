@@ -4,6 +4,7 @@ using CncCad.Core.Documents;
 using CncCad.Core.Entities;
 using CncCad.Core.Geometry;
 using CncCad.Core.Snapping;
+using CncCad.Core.Selection;
 using CncCad.Rendering.Canvas;
 
 namespace CncCad.Core.Tests;
@@ -42,6 +43,17 @@ public class CadFoundationTests
     }
 
     [Fact]
+    public void HitTesting_DoesNotCreatePhantomSegmentsBetweenDisconnectedFigures()
+    {
+        var path=new VectorPathEntity{Figures=[
+            new(){Start=new(0,0),Segments=[new LinePathSegment(new(10,0))]},
+            new(){Start=new(100,100),Segments=[new LinePathSegment(new(110,100))]}
+        ]};
+        Assert.Same(path,EntityHitTester.HitTest([path],new(5,.1),.25));
+        Assert.Null(EntityHitTester.HitTest([path],new(55,50),.25));
+    }
+
+    [Fact]
     public void MoveCommand_UndoRedoMovesAllEntitiesExactlyOnce()
     {
         var document = new CadDocument(); var a = new CircleEntity { Center = new(1,2), Radius = 1 }; var b = new RectangleEntity { Origin = new(5,6), Width = 2, Height = 3 }; document.Entities.AddRange([a,b]);
@@ -52,7 +64,7 @@ public class CadFoundationTests
     }
 
     [Fact]
-    public void DrawingSession_CompletesLinePolylineCircleRectangleAndArc()
+    public void DrawingSession_CompletesLinePolylineCircleRectangleArcAndDrillPoint()
     {
         var session = new DrawingToolSession(); var layer = Guid.NewGuid();
         session.SetTool(CanvasTool.Line); Assert.Null(session.PointerPressed(new(0,0), layer, 1)); Assert.IsType<LineEntity>(session.PointerPressed(new(10,0), layer, 1));
@@ -60,5 +72,6 @@ public class CadFoundationTests
         session.SetTool(CanvasTool.Circle); session.PointerPressed(new(0,0), layer, 1); Assert.IsType<CircleEntity>(session.PointerPressed(new(5,0), layer, 1));
         session.SetTool(CanvasTool.Rectangle); session.PointerPressed(new(0,0), layer, 1); Assert.IsType<RectangleEntity>(session.PointerReleased(new(5,5), layer));
         session.SetTool(CanvasTool.Arc); session.PointerPressed(new(-5,0), layer, 1); session.PointerPressed(new(0,5), layer, 1); Assert.IsType<ArcEntity>(session.PointerPressed(new(5,0), layer, 1));
+        session.SetTool(CanvasTool.DrillPoint);var drill=Assert.IsType<DrillPointEntity>(session.PointerPressed(new(7,9),layer,1));Assert.Equal(new Point2D(7,9),drill.Position);Assert.Equal(layer,drill.LayerId);
     }
 }

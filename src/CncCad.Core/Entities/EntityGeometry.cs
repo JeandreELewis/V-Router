@@ -4,17 +4,19 @@ namespace CncCad.Core.Entities;
 
 public static class EntityGeometry
 {
-    public static IReadOnlyList<Point2D> WorldPoints(CadEntity entity, int curveSegments = 96) => entity switch
+    public static IReadOnlyList<Point2D> WorldPoints(CadEntity entity, int curveSegments = 96) => WorldFigures(entity,curveSegments).SelectMany(x=>x).ToArray();
+
+    public static IReadOnlyList<IReadOnlyList<Point2D>> WorldFigures(CadEntity entity,int curveSegments=96)=>entity switch
     {
-        LineEntity line => [line.Transform.Transform(line.Start), line.Transform.Transform(line.End)],
-        PolylineEntity polyline => polyline.Points.Select(polyline.Transform.Transform).ToArray(),
-        RectangleEntity rectangle => rectangle.Corners.Select(rectangle.Transform.Transform).ToArray(),
-        CircleEntity circle => Enumerable.Range(0, curveSegments).Select(i => circle.Transform.Transform(new(circle.Center.X + circle.Radius * Math.Cos(i * Math.PI * 2 / curveSegments), circle.Center.Y + circle.Radius * Math.Sin(i * Math.PI * 2 / curveSegments)))).ToArray(),
-        DrillPointEntity drill => [drill.Transform.Transform(drill.Position)],
-        EllipseEntity ellipse => Enumerable.Range(0, curveSegments).Select(i => ellipse.Transform.Transform(new(ellipse.Center.X + ellipse.RadiusX * Math.Cos(i * Math.PI * 2 / curveSegments), ellipse.Center.Y + ellipse.RadiusY * Math.Sin(i * Math.PI * 2 / curveSegments)))).ToArray(),
-        ArcEntity arc => Enumerable.Range(0, curveSegments + 1).Select(i => arc.Transform.Transform(GeometryAlgorithms.PointOnArc(arc, arc.StartAngleDegrees + arc.SweepAngleDegrees * i / curveSegments))).ToArray(),
-        VectorPathEntity path => VectorPathGeometry.Flatten(path.Figures, .02).Select(path.Transform.Transform).ToArray(),
-        TextEntity text => VectorPathGeometry.Flatten(text.Outlines, .02).Select(text.Transform.Transform).ToArray(),
+        LineEntity line => [[line.Transform.Transform(line.Start), line.Transform.Transform(line.End)]],
+        PolylineEntity polyline => [polyline.Points.Select(polyline.Transform.Transform).ToArray()],
+        RectangleEntity rectangle => [rectangle.Corners.Select(rectangle.Transform.Transform).ToArray()],
+        CircleEntity circle => [Enumerable.Range(0, curveSegments).Select(i => circle.Transform.Transform(new(circle.Center.X + circle.Radius * Math.Cos(i * Math.PI * 2 / curveSegments), circle.Center.Y + circle.Radius * Math.Sin(i * Math.PI * 2 / curveSegments)))).ToArray()],
+        DrillPointEntity drill => [[drill.Transform.Transform(drill.Position)]],
+        EllipseEntity ellipse => [Enumerable.Range(0, curveSegments).Select(i => ellipse.Transform.Transform(new(ellipse.Center.X + ellipse.RadiusX * Math.Cos(i * Math.PI * 2 / curveSegments), ellipse.Center.Y + ellipse.RadiusY * Math.Sin(i * Math.PI * 2 / curveSegments)))).ToArray()],
+        ArcEntity arc => [Enumerable.Range(0, curveSegments + 1).Select(i => GeometryAlgorithms.PointOnArc(arc, arc.StartAngleDegrees + arc.SweepAngleDegrees * i / curveSegments)).ToArray()],
+        VectorPathEntity path => path.Figures.Select(figure=>(IReadOnlyList<Point2D>)VectorPathGeometry.Flatten([figure],.02).Select(path.Transform.Transform).ToArray()).ToArray(),
+        TextEntity text => text.Outlines.Select(figure=>(IReadOnlyList<Point2D>)VectorPathGeometry.Flatten([figure],.02).Select(text.Transform.Transform).ToArray()).ToArray(),
         _ => []
     };
 
@@ -37,7 +39,7 @@ public static class EntityGeometry
         var candidates=new List<double>{arc.StartAngleDegrees,arc.StartAngleDegrees+arc.SweepAngleDegrees};
         var x=Math.Atan2(arc.Transform.M21,arc.Transform.M11)*180/Math.PI;var y=Math.Atan2(arc.Transform.M22,arc.Transform.M12)*180/Math.PI;
         foreach(var angle in new[]{x,x+180,y,y+180})if(GeometryAlgorithms.IsAngleOnSweep(angle,arc.StartAngleDegrees,arc.SweepAngleDegrees))candidates.Add(angle);
-        return BoundingBox.FromPoints(candidates.Select(a=>arc.Transform.Transform(GeometryAlgorithms.PointOnArc(arc,a))));
+        return BoundingBox.FromPoints(candidates.Select(a=>GeometryAlgorithms.PointOnArc(arc,a)));
     }
 
     public static void Translate(CadEntity entity, Vector2D delta)
@@ -77,7 +79,7 @@ public static class EntityGeometry
         LineEntity line => [line.Transform.Transform(line.Start), line.Transform.Transform(line.End)],
         PolylineEntity polyline when polyline.Points.Count > 0 => (polyline.IsClosed ? polyline.Points : [polyline.Points[0], polyline.Points[^1]]).Select(polyline.Transform.Transform).ToArray(),
         RectangleEntity rectangle => rectangle.Corners.Select(rectangle.Transform.Transform).ToArray(),
-        ArcEntity arc => [arc.Transform.Transform(GeometryAlgorithms.PointOnArc(arc, arc.StartAngleDegrees)), arc.Transform.Transform(GeometryAlgorithms.PointOnArc(arc, arc.StartAngleDegrees + arc.SweepAngleDegrees))],
+        ArcEntity arc => [GeometryAlgorithms.PointOnArc(arc, arc.StartAngleDegrees), GeometryAlgorithms.PointOnArc(arc, arc.StartAngleDegrees + arc.SweepAngleDegrees)],
         VectorPathEntity path=>path.Figures.Where(x=>!x.IsClosed).SelectMany(x=>new[]{path.Transform.Transform(x.Start),path.Transform.Transform(x.Segments.LastOrDefault()?.End??x.Start)}).ToArray(),
         _ => []
     };
@@ -87,7 +89,7 @@ public static class EntityGeometry
         LineEntity line => [line.Transform.Transform(Mid(line.Start, line.End))],
         RectangleEntity rectangle => rectangle.Corners.Zip(rectangle.Corners.Skip(1).Append(rectangle.Corners[0]), Mid).Select(rectangle.Transform.Transform).ToArray(),
         PolylineEntity polyline => polyline.Points.Zip(polyline.Points.Skip(1), Mid).Select(polyline.Transform.Transform).ToArray(),
-        ArcEntity arc => [arc.Transform.Transform(GeometryAlgorithms.PointOnArc(arc, arc.StartAngleDegrees + arc.SweepAngleDegrees / 2))],
+        ArcEntity arc => [GeometryAlgorithms.PointOnArc(arc, arc.StartAngleDegrees + arc.SweepAngleDegrees / 2)],
         VectorPathEntity path => path.Figures.SelectMany(figure=>VectorPathGeometry.Flatten([figure],.02).Zip(VectorPathGeometry.Flatten([figure],.02).Skip(1),Mid)).Select(path.Transform.Transform).ToArray(),
         _ => []
     };

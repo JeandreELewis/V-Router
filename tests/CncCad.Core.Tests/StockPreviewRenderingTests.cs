@@ -30,7 +30,7 @@ public sealed class StockPreviewRenderingTests
         source.PreviewSettings=new(){Style=PreviewRenderStyle.Material,MaterialPreset=MaterialAppearancePreset.Plywood,GrainDirection=GrainDirection.AlongStockX,TintHex="#C88D4D"};
         await using var stream=new MemoryStream();var serializer=new JsonProjectSerializer();await serializer.SaveAsync(source,stream);stream.Position=0;
         var loaded=await serializer.LoadAsync(stream);
-        Assert.Equal(8,loaded.Version);Assert.Equal(source.PreviewSettings,loaded.PreviewSettings);Assert.Equal(5,loaded.CamJob.Operations.Count);
+        Assert.Equal(CncProject.CurrentVersion,loaded.Version);Assert.Equal(source.PreviewSettings,loaded.PreviewSettings);Assert.Equal(5,loaded.CamJob.Operations.Count);
         Assert.Equal(source.CamJob.Operations.Select(x=>x.Tool),loaded.CamJob.Operations.Select(x=>x.Tool));
     }
 
