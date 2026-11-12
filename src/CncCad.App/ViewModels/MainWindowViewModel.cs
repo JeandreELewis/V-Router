@@ -55,6 +55,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly IVectorImportService _vectorImporter = new CompositeVectorImportService([new SvgVectorImporter(),new DxfVectorImporter()]);
     private readonly IVectorRepairService _repairService = new VectorRepairService();
     private readonly IVectorTopologyService _topologyService = new VectorTopologyService();
+    private readonly IRouterVectorPreparationService _routerPreparationService = new RouterVectorPreparationService();
     private readonly ITextOutlineService _textOutlineService = new PortableFallbackTextOutlineService();
     private readonly IFontCatalog? _fontCatalog;
     private readonly INestingOptimizer _nestingOptimizer=new DeterministicNestingOptimizer();
@@ -260,6 +261,7 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty] private int cornerIndex=1;
     [ObservableProperty] private double chamferDistance=5;
     [ObservableProperty] private double filletRadius=5;
+    [ObservableProperty] private double cornerReliefToolDiameter=6;
     private RepairAnalysis? _repairAnalysis;
     public IReadOnlyList<CadOffsetJoin> OffsetJoins => Enum.GetValues<CadOffsetJoin>();
     public IReadOnlyList<string> FontKindFilters { get; }=["All","Outline","SingleLine","Stencil"];
@@ -302,6 +304,7 @@ public partial class MainWindowViewModel : ViewModelBase
     public bool CanMakeStartNode=>ActiveNodeEditable&&_activeNodeIndex>=0&&(_activeNodeEntity is PolylineEntity{IsClosed:true}&&_activeNodeIndex>0||_activeNodeEntity is VectorPathEntity vector&&VectorPathNodes.CanMakeStart(vector,_activeNodeIndex));
     public bool CanApplyNodePosition=>ActiveNodeEditable&&_activeNodeIndex>=0&&_activeNodeEntity is not null&&(_activeNodeEntity is not VectorPathEntity vector||VectorPathNodes.CanMove(vector,_activeNodeIndex));
     public bool CanApplyRepair=>_repairAnalysis is not null&&(_repairAnalysis.RemoveIds.Count>0||_repairAnalysis.Replacements.Count>0);
+    public bool CanAddCornerRelief=>CornerReliefEligibility().Success;
     public bool CanUseAdvancedTextSettings=>true;
     public bool CanCreateVCarve=>HasJob&&HasSelection&&SelectedTool is{Type:ToolType.VBit or ToolType.EngravingBit,VBitAngleDegrees:>0 and <180}&&SelectedEntities().All(IsVCarveContour)&&SelectedEntities().Select(entity=>entity.MaterialSheetId).Distinct().Count()==1;
     public bool CanAcceptNest=>NestingJob.Status==NestingLayoutStatus.Stale&&NestingJob.AcceptedLayout?.Success==true;
@@ -317,6 +320,7 @@ public partial class MainWindowViewModel : ViewModelBase
     public string StabilizationNotice=>"Unavailable until its geometry and safety conformance tests pass.";
     public string VCarveGuidance=>CanCreateVCarve?"Closed outlines and a valid V-bit are ready for variable-depth carving.":"Select only closed outline vectors on one sheet and choose a V-bit with a valid included angle.";
     public string CornerEditGuidance=>CanUseChamferFillet?"Uses world-millimetre distances. Fillets remain exact circular arcs.":"Select one unlocked polyline with at least three nodes.";
+    public string CornerReliefGuidance{get{var result=CornerReliefEligibility();return result.Success?"Selected inside corner is ready. Cutter diameter is applied in world millimetres.":result.Error??"Select one inside corner on a closed polyline.";}}
     public string ExportAvailabilityMessage=>CanSaveToolpaths?"Certified machine output is available.":"Runnable G-code saving is disabled while the selected controller post is uncertified. Preview and preflight remain available.";
     public string PreviewAppearanceSummary=>PreviewSettings.Style==PreviewRenderStyle.Technical?"Technical shaded preview":$"{PreviewSettings.ResolveMaterial(CamJob.Material?.Name,CamJob.Material?.Category)} · {(PreviewSettings.GrainDirection==GrainDirection.AlongStockY?"grain along Y":"grain along X")}";
 
@@ -416,6 +420,11 @@ public partial class MainWindowViewModel : ViewModelBase
     public void ApplyInteractiveTrim(TrimCandidate candidate){if(!candidate.Success)throw new InvalidOperationException(candidate.Error);_history.Execute(new ReplaceEntitiesCommand(Document,[candidate.TargetId],candidate.Replacements,"Trim vector"));Selection.Set(candidate.Replacements.Select(x=>x.Id));SelectionChanged();UpdateHistoryState();InvalidateOperations([candidate.TargetId]);IsDirty=true;RefreshWorkspaceState();Message="Vector trimmed";}
     public void ChamferSelection(){var path=SelectedEntities().OfType<PolylineEntity>().SingleOrDefault()??throw new InvalidOperationException("Select one polyline.");ReplaceTopology(path,_topologyService.Chamfer(path,CornerIndex,ChamferDistance),"Chamfer corner");}
     public void FilletSelection(){var path=SelectedEntities().OfType<PolylineEntity>().SingleOrDefault()??throw new InvalidOperationException("Select one polyline.");ReplaceTopology(path,_topologyService.Fillet(path,CornerIndex,FilletRadius),"Fillet corner");}
+    public void AddCornerRelief(CornerReliefStyle style){var path=SelectedEntities().OfType<PolylineEntity>().SingleOrDefault()??throw new InvalidOperationException("Select one closed polyline.");ReplaceTopology(path,_routerPreparationService.AddCornerRelief(path,[CornerIndex],CornerReliefToolDiameter,style),style==CornerReliefStyle.Dogbone?"Add dogbone relief":"Add T-bone relief");}
+    private VectorEditResult CornerReliefEligibility()
+    {
+        var path=SelectedEntities().OfType<PolylineEntity>().SingleOrDefault();if(path is null||Selection.Count!=1)return VectorEditResult.Fail("Select one closed polyline.");if(path.IsLocked||Document.Layers.FirstOrDefault(layer=>layer.Id==path.LayerId)?.IsLocked==true)return VectorEditResult.Fail("Unlock the vector and its layer before adding corner relief.");return _routerPreparationService.AddCornerRelief(path,[CornerIndex],CornerReliefToolDiameter,CornerReliefStyle.Dogbone);
+    }
     private void ReplaceTopology(CadEntity source,VectorEditResult result,string description){if(!result.Success)throw new InvalidOperationException(result.Error);_history.Execute(new ReplaceEntitiesCommand(Document,[source.Id],result.Entities,description));Selection.Set(result.Entities.Select(x=>x.Id));SelectionChanged();AfterGeometryCommand([source.Id],description);}
     public void AnalyzeRepair(){var source=HasSelection?SelectedEntities():Document.Entities.Where(x=>x.IsVisible&&!x.IsLocked).ToArray();_repairAnalysis=_repairService.Analyze(source,new(RepairTolerance,MinimumSegment));RepairIssues.Clear();foreach(var issue in _repairAnalysis.Issues)RepairIssues.Add(issue);OnPropertyChanged(nameof(CanApplyRepair));Message=$"Repair preview: {RepairIssues.Count} issue(s), {_repairAnalysis.Replacements.Count} proposed replacement(s)";}
     public void ApplyRepair(){if(_repairAnalysis is null)throw new InvalidOperationException("Analyze vectors first.");if(_repairAnalysis.RemoveIds.Count==0&&_repairAnalysis.Replacements.Count==0){Message="No unambiguous repairs to apply; review the diagnostics.";return;}var analysis=_repairAnalysis;_history.Execute(new ReplaceEntitiesCommand(Document,analysis.RemoveIds,analysis.Replacements,"Repair vectors"));var ids=analysis.RemoveIds.Concat(analysis.Replacements.Select(x=>x.Id)).ToArray();Selection.Set(analysis.Replacements.Select(x=>x.Id));ClearRepairAnalysis();AfterGeometryCommand(ids,"Vector repairs applied");}
@@ -435,7 +444,7 @@ public partial class MainWindowViewModel : ViewModelBase
         var primary=Selection.PrimaryId is{} primaryId?Document.Entities.FirstOrDefault(x=>x.Id==primaryId):null;var layer=primary is null?null:Document.Layers.FirstOrDefault(x=>x.Id==primary.LayerId);SelectionStatus = Selection.Count switch { 0 => "Nothing selected", 1 => $"{primary?.GetType().Name.Replace("Entity","")??"Vector"} · {layer?.Name??"Layer"} · {primary?.StrokeColor??layer?.Color??"default color"}", _ => $"{Selection.Count} entities selected · primary {primary?.GetType().Name.Replace("Entity","")??"vector"}" };
         if(primary is TextEntity text&&Selection.Count==1){TextValue=text.Text;TextFont=text.FontFamily;TextFontStyle=text.FontStyle;TextSize=text.SizeMm;TextLetterSpacing=text.LetterSpacingMm;TextLineSpacing=text.LineSpacing;TextAlignment=text.Alignment;TextPathOffset=text.PathPlacement.BaselineOffsetMm;TextPathStart=text.PathPlacement.StartOffset;TextPathReverse=text.PathPlacement.ReverseDirection;TextPathFlip=text.PathPlacement.FlipSide;TextKeepUpright=text.PathPlacement.KeepUpright;TextPathFit=text.PathPlacement.FitMode==TextFitMode.FitSpacing;SelectedFont=Fonts.FirstOrDefault(x=>x.Descriptor.Family.Equals(text.FontFamily,StringComparison.OrdinalIgnoreCase));}
         HasSelection = Selection.Count > 0;
-        OnPropertyChanged(nameof(CanOffsetSelection));OnPropertyChanged(nameof(CanUseChamferFillet));OnPropertyChanged(nameof(CornerEditGuidance));OnPropertyChanged(nameof(CanCreateVCarve));OnPropertyChanged(nameof(VCarveGuidance));
+        OnPropertyChanged(nameof(CanOffsetSelection));OnPropertyChanged(nameof(CanUseChamferFillet));OnPropertyChanged(nameof(CornerEditGuidance));OnPropertyChanged(nameof(CanAddCornerRelief));OnPropertyChanged(nameof(CornerReliefGuidance));OnPropertyChanged(nameof(CanCreateVCarve));OnPropertyChanged(nameof(VCarveGuidance));
         CanAlign=Selection.Count>=2;CanDistribute=Selection.Count>=3;
         if (HasSelection) { var bounds = SelectionBounds(); SelectionX = bounds.MinX; SelectionY = bounds.MinY; PivotX=(bounds.MinX+bounds.MaxX)/2; PivotY=(bounds.MinY+bounds.MaxY)/2; }
         RefreshWorkspaceState();
@@ -842,6 +851,8 @@ public partial class MainWindowViewModel : ViewModelBase
     partial void OnDesignTaskPageChanged(DesignTaskPage value){OnPropertyChanged(nameof(IsDesignPalette));OnPropertyChanged(nameof(IsDesignConstructionTask));OnPropertyChanged(nameof(IsDesignPositionTask));OnPropertyChanged(nameof(IsDesignTransformTask));OnPropertyChanged(nameof(IsDesignEditTask));OnPropertyChanged(nameof(IsDesignOffsetTask));OnPropertyChanged(nameof(IsDesignTextTask));OnPropertyChanged(nameof(IsDesignAppearanceTask));OnPropertyChanged(nameof(IsDesignRepairTask));OnPropertyChanged(nameof(IsDesignSnappingTask));OnPropertyChanged(nameof(IsDesignLayersTask));OnPropertyChanged(nameof(IsDesignNestingTask));OnPropertyChanged(nameof(IsDesignJobTask));OnPropertyChanged(nameof(DesignTaskTitle));}
     partial void OnToolpathTaskPageChanged(ToolpathTaskPage value){OnPropertyChanged(nameof(IsToolpathPalette));OnPropertyChanged(nameof(IsToolLibraryTask));OnPropertyChanged(nameof(IsMachineFixturesTask));OnPropertyChanged(nameof(ToolpathTaskTitle));}
     partial void OnSelectedLayerChanged(CadLayer? value){LayerNameDraft=value?.Name??"";LayerColorDraft=value?.Color??"#61C8FF";}
+    partial void OnCornerIndexChanged(int value){OnPropertyChanged(nameof(CanAddCornerRelief));OnPropertyChanged(nameof(CornerReliefGuidance));}
+    partial void OnCornerReliefToolDiameterChanged(double value){OnPropertyChanged(nameof(CanAddCornerRelief));OnPropertyChanged(nameof(CornerReliefGuidance));}
     public void SetActiveToolGuidance(CanvasTool tool)
     {
         IsSelectActive = tool == CanvasTool.Select;

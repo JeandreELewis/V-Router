@@ -121,6 +121,17 @@ public sealed class CommandHelpHeadlessTests
     }
 
     [AvaloniaFact]
+    public void RouterCornerReliefControlsExecuteAtMinimumSize()
+    {
+        var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent());vm.CreateJob(new JobSettings{Name="Corner relief",WidthMm=100,HeightMm=100,ThicknessMm=18});var path=new PolylineEntity{LayerId=vm.Document.ActiveLayerId,IsClosed=true,Points=[new(10,10),new(80,10),new(80,70),new(50,70),new(50,40),new(10,40)]};vm.AddEntity(path);vm.CornerIndex=4;vm.CornerReliefToolDiameter=6;vm.OpenDesignTask(DesignTaskPage.Repair);var window=new MainWindow{DataContext=vm,Width=1100,Height=700};window.Show();Dispatcher.UIThread.RunJobs();
+        try
+        {
+            var dogbone=window.GetVisualDescendants().OfType<Button>().Single(control=>control.IsVisible&&Equals(control.Content,"Dogbone"));var tBone=window.GetVisualDescendants().OfType<Button>().Single(control=>control.IsVisible&&Equals(control.Content,"T-Bone"));Assert.True(dogbone.IsEnabled);Assert.True(tBone.IsEnabled);dogbone.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();Assert.True(Assert.IsType<PolylineEntity>(Assert.Single(vm.Document.Entities)).Points.Count>path.Points.Count);Assert.True(vm.CanUndo);
+        }
+        finally{window.Close();}
+    }
+
+    [AvaloniaFact]
     public void ExactPolylineCancelIsVisibleAtMinimumSizeAndDoesNotCreateHistoryOrGeometry()
     {
         var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent());vm.CreateJob(new JobSettings{Name="Exact polyline",WidthMm=100,HeightMm=100,ThicknessMm=18});vm.ActivePaletteItem=vm.CreationTools.Single(item=>item.Tool==CanvasTool.Polyline);vm.OpenDesignTask(DesignTaskPage.Construction);vm.Point1X=1;vm.Point1Y=2;vm.Point2X=10;vm.Point2Y=2;vm.AddNumericPolylineNode();var window=new MainWindow{DataContext=vm,Width=1100,Height=700};window.Show();Dispatcher.UIThread.RunJobs();

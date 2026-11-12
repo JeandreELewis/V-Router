@@ -11,6 +11,33 @@ namespace CncCad.Core.Tests;
 public class VectorFoundationTests
 {
     [Fact]
+    public void RouterDogboneUsesWorldMillimetresAndPreservesEntityMetadata()
+    {
+        var layer=Guid.NewGuid();var sheet=Guid.NewGuid();var group=Guid.NewGuid();var source=new PolylineEntity{LayerId=layer,MaterialSheetId=sheet,GroupId=group,StrokeColor="#123ABC",IsVisible=false,IsLocked=true,Transform=Matrix2D.Then(Matrix2D.Scale(2,.5),Matrix2D.Translation(10,20)),Points=[new(0,0),new(20,0),new(20,40),new(10,40),new(10,20),new(0,20)],IsClosed=true};
+        var result=new RouterVectorPreparationService().AddCornerRelief(source,[4],6,CornerReliefStyle.Dogbone);Assert.True(result.Success,result.Error);var relief=Assert.IsType<PolylineEntity>(Assert.Single(result.Entities));
+        Assert.Equal(source.Id,relief.Id);Assert.Equal(layer,relief.LayerId);Assert.Equal(sheet,relief.MaterialSheetId);Assert.Equal(group,relief.GroupId);Assert.Equal(source.StrokeColor,relief.StrokeColor);Assert.Equal(source.IsVisible,relief.IsVisible);Assert.Equal(source.IsLocked,relief.IsLocked);Assert.Equal(Matrix2D.Identity,relief.Transform);
+        var center=new Point2D(27,33);var arc=relief.Points.Skip(4).TakeWhile(point=>point!=new Point2D(10,30)).ToArray();Assert.True(arc.Length>3);Assert.All(arc,point=>Assert.Equal(3,point.DistanceTo(center),6));Assert.Equal(new Point2D(30,33),arc[0]);Assert.Equal(new Point2D(27,30),arc[^1]);
+    }
+
+    [Fact]
+    public void RouterCornerReliefIsFiniteDeterministicAndOrientationIndependent()
+    {
+        var service=new RouterVectorPreparationService();var transforms=new[]{Matrix2D.Identity,Matrix2D.Rotation(31),Matrix2D.Scale(-1,1),Matrix2D.Then(Matrix2D.Scale(1.7,.6),Matrix2D.Rotation(-23))};
+        foreach(var transform in transforms)foreach(var reverse in new[]{false,true})
+        {
+            var points=new[]{new Point2D(0,0),new Point2D(40,0),new Point2D(40,30),new Point2D(20,30),new Point2D(20,15),new Point2D(0,15)};if(reverse)Array.Reverse(points);var selected=Array.IndexOf(points,new Point2D(20,15));var source=new PolylineEntity{Transform=transform,Points=[..points],IsClosed=true};var first=service.AddCornerRelief(source,[selected],8,CornerReliefStyle.Dogbone);var second=service.AddCornerRelief(source,[selected],8,CornerReliefStyle.Dogbone);Assert.True(first.Success,first.Error);Assert.Equal(Assert.IsType<PolylineEntity>(Assert.Single(first.Entities)).Points,Assert.IsType<PolylineEntity>(Assert.Single(second.Entities)).Points);Assert.All(Assert.IsType<PolylineEntity>(first.Entities[0]).Points,point=>Assert.True(double.IsFinite(point.X)&&double.IsFinite(point.Y)));
+        }
+        var concave=new PolylineEntity{Points=[new(0,0),new(40,0),new(40,40),new(20,40),new(20,20),new(0,20)],IsClosed=true};var concaveResult=service.AddCornerRelief(concave,[4],6,CornerReliefStyle.Dogbone);Assert.True(concaveResult.Success,concaveResult.Error);var concaveRelief=Assert.IsType<PolylineEntity>(Assert.Single(concaveResult.Entities));Assert.Contains(concaveRelief.Points,point=>point.X<20&&point.Y>20);
+    }
+
+    [Fact]
+    public void RouterTBoneCreatesAFullCutterDiameterLobeAndRejectsInvalidInputs()
+    {
+        var service=new RouterVectorPreparationService();var source=new PolylineEntity{Points=[new(0,0),new(50,0),new(50,40),new(25,40),new(25,20),new(0,20)],IsClosed=true};var result=service.AddCornerRelief(source,[4],6,CornerReliefStyle.TBone);Assert.True(result.Success,result.Error);var relief=Assert.IsType<PolylineEntity>(Assert.Single(result.Entities));var center=new Point2D(22,20);var lobe=relief.Points.Skip(4).TakeWhile(point=>point!=new Point2D(0,20)).ToArray();Assert.True(lobe.Length>12);Assert.All(lobe,point=>Assert.Equal(3,point.DistanceTo(center),6));Assert.True(lobe.Max(point=>point.X)-lobe.Min(point=>point.X)>5.9);Assert.True(lobe.Max(point=>point.Y)-lobe.Min(point=>point.Y)>5.9);
+        Assert.False(service.AddCornerRelief(source,[],6,CornerReliefStyle.Dogbone).Success);Assert.False(service.AddCornerRelief(source,[9],6,CornerReliefStyle.Dogbone).Success);Assert.False(service.AddCornerRelief(source,[4],double.NaN,CornerReliefStyle.Dogbone).Success);Assert.Contains("outside corner",service.AddCornerRelief(source,[1],6,CornerReliefStyle.Dogbone).Error);Assert.False(service.AddCornerRelief(new(){Points=[new(0,0),new(10,0)],IsClosed=false},[0],6,CornerReliefStyle.Dogbone).Success);
+    }
+
+    [Fact]
     public void DesktopFontCatalog_ProvidesSystemAndCncCenterlineFonts()
     {
         var catalog=new DesktopFontCatalog();Assert.Contains(catalog.Fonts,x=>x.Descriptor.Kind==FontKind.SingleLine);Assert.Contains(catalog.Fonts,x=>!x.Descriptor.IsBundled);var system=catalog.Fonts.First(x=>!x.Descriptor.IsBundled);var result=new SkiaTextOutlineService().Create(new("A",system.Descriptor.Family,system.Descriptor.Style,12,0,1.2,TextAlignment.Left,new(0,0)));Assert.NotEmpty(result.Outlines);Assert.Equal(FontKind.Outline,result.Kind);

@@ -225,7 +225,15 @@ public sealed class ProductionWorkflowTests
     [Fact]
     public void RouterPreparationAddsOriginalCornerReliefAndReportsOpenVectors()
     {
-        var contour=new PolylineEntity{Points=[new(0,0),new(50,0),new(50,40),new(0,40)],IsClosed=true};var service=new RouterVectorPreparationService();var relief=service.AddCornerRelief(contour,[1],6,CornerReliefStyle.Dogbone);Assert.True(relief.Success);Assert.True(Assert.IsType<PolylineEntity>(Assert.Single(relief.Entities)).Points.Count>contour.Points.Count);var open=new PolylineEntity{Points=[new(0,0),new(10,0)],IsClosed=false};Assert.Contains(service.Diagnose([open],6),x=>x.Code=="open-vector");
+        var contour=new PolylineEntity{Points=[new(0,0),new(50,0),new(50,40),new(25,40),new(25,20),new(0,20)],IsClosed=true};var service=new RouterVectorPreparationService();var relief=service.AddCornerRelief(contour,[4],6,CornerReliefStyle.Dogbone);Assert.True(relief.Success);Assert.True(Assert.IsType<PolylineEntity>(Assert.Single(relief.Entities)).Points.Count>contour.Points.Count);var open=new PolylineEntity{Points=[new(0,0),new(10,0)],IsClosed=false};Assert.Contains(service.Diagnose([open],6),x=>x.Code=="open-vector");
+    }
+
+    [Theory]
+    [InlineData(CornerReliefStyle.Dogbone)]
+    [InlineData(CornerReliefStyle.TBone)]
+    public void RouterCornerReliefProducesProfileReadyFiniteGeometry(CornerReliefStyle style)
+    {
+        var source=new PolylineEntity{Points=[new(0,0),new(60,0),new(60,40),new(30,40),new(30,20),new(0,20)],IsClosed=true};var prepared=new RouterVectorPreparationService().AddCornerRelief(source,[4],6,style);Assert.True(prepared.Success,prepared.Error);var contour=Assert.IsType<PolylineEntity>(Assert.Single(prepared.Entities));var operation=new ProfileOperationDefinition{GeometryIds=[contour.Id],Tool=Tool(),Side=ProfileSide.OnVector,CutDepthMm=3,PassDepthMm=2,SafeZMm=5,FeedRateMmPerMin=1000,PlungeRateMmPerMin=250,SpindleRpm=18000};var calculated=new ProfileOperationCalculator().Calculate(operation,new Dictionary<Guid,CadEntity>{{contour.Id,contour}});Assert.True(calculated.Success,string.Join("; ",calculated.Errors.Select(error=>error.Message)));foreach(var move in calculated.Toolpath!.Moves){var position=move switch{RapidMove rapid=>(rapid.End,rapid.Z),LinearMove linear=>(linear.End,linear.Z),ArcMove arc=>(arc.End,arc.Z),_=>(new Point2D(0,0),0d)};Assert.True(double.IsFinite(position.Item1.X)&&double.IsFinite(position.Item1.Y)&&double.IsFinite(position.Item2));}
     }
 
     [Fact]

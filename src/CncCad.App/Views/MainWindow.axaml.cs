@@ -11,6 +11,7 @@ using Avalonia.Threading;
 using Avalonia.Media;
 using System.Diagnostics;
 using CncCad.Core.Transforms;
+using CncCad.Core.Geometry;
 using CncCad.Core.Preview;
 using CncCad.Infrastructure.Settings;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -276,6 +277,8 @@ public partial class MainWindow : Window
     private void Ungroup_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.UngroupSelection);
     private void AnalyzeRepair_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.AnalyzeRepair);
     private void ApplyRepair_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.ApplyRepair);
+    private void Dogbone_Click(object? s,RoutedEventArgs e)=>RunCadAction(()=>ViewModel.AddCornerRelief(CornerReliefStyle.Dogbone));
+    private void TBone_Click(object? s,RoutedEventArgs e)=>RunCadAction(()=>ViewModel.AddCornerRelief(CornerReliefStyle.TBone));
     private void AddLayer_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.AddLayer);
     private void DeleteLayer_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.DeleteSelectedLayer);
     private void ToggleLayerVisibility_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.ToggleLayerVisibility);
