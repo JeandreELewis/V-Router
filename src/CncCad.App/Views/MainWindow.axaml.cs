@@ -35,7 +35,7 @@ public partial class MainWindow : Window
     private Flyout? _commandHelpFlyout;
     private bool _helpMode;
     public MainWindow() : this(null) { }
-    public MainWindow(IApplicationPreferencesStore? preferencesStore) { _preferencesStore=preferencesStore;InitializeComponent(); Loaded += async (_, _) => { ConfigureCanvas();ViewModel.SetResponsiveLayout(Bounds.Width);await LoadPreferencesAsync();ConfigurePlatformMenu();}; SizeChanged+=(_,e)=>ViewModel.SetResponsiveLayout(e.NewSize.Width);Closing += OnClosing; KeyDown += OnKeyDown;AddHandler(PointerPressedEvent,OnCommandHelpPointerPressed,RoutingStrategies.Tunnel,true); _playbackTimer.Tick += PlaybackTick; _playbackTimer.Start();_recoveryTimer.Tick+=async(_,_)=>{try{await ViewModel.SaveRecoveryIfDueAsync();}catch(Exception ex){ViewModel.Message=$"Recovery snapshot failed: {ex.Message}";}};_recoveryTimer.Start(); _playbackClock.Start(); }
+    public MainWindow(IApplicationPreferencesStore? preferencesStore) { _preferencesStore=preferencesStore;InitializeComponent(); Loaded += async (_, _) => { ConfigureCanvas();ViewModel.SetResponsiveLayout(Bounds.Width);await LoadPreferencesAsync();ConfigurePlatformMenu();CommandHelp.ApplyAccessibilityTree(this);}; SizeChanged+=(_,e)=>ViewModel.SetResponsiveLayout(e.NewSize.Width);Closing += OnClosing; KeyDown += OnKeyDown;AddHandler(PointerPressedEvent,OnCommandHelpPointerPressed,RoutingStrategies.Tunnel,true); _playbackTimer.Tick += PlaybackTick; _playbackTimer.Start();_recoveryTimer.Tick+=async(_,_)=>{try{await ViewModel.SaveRecoveryIfDueAsync();}catch(Exception ex){ViewModel.Message=$"Recovery snapshot failed: {ex.Message}";}};_recoveryTimer.Start(); _playbackClock.Start(); }
 
     private void HelpMode_Click(object? sender,RoutedEventArgs e)
     {

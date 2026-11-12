@@ -24,7 +24,7 @@ public sealed class StockPreviewRenderingTests
     }
 
     [Fact]
-    public async Task ProjectV8_RoundTripsPreviewAppearanceWithoutChangingCamData()
+    public async Task ProjectV9_RoundTripsPreviewAppearanceWithoutChangingCamData()
     {
         var source=ModernDoorAcceptanceProject.Create();
         source.PreviewSettings=new(){Style=PreviewRenderStyle.Material,MaterialPreset=MaterialAppearancePreset.Plywood,GrainDirection=GrainDirection.AlongStockX,TintHex="#C88D4D"};

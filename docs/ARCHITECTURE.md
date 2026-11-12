@@ -15,7 +15,7 @@ Project schema version 9 is current. Versions 1–8 are migrated in memory; the 
 - Toolpaths exist as typed moves before any G-code is produced.
 - Tools live in an application SQLite database. Each CAM operation stores an immutable tool snapshot so an existing job remains reproducible when the master library changes.
 - The canvas is one custom-rendered control to support large entity counts.
-- JSON project files use a version-8 `CncProject` envelope containing the CAD document, persistent `CamJob`, nesting state, material and immutable machine snapshots, postprocessor identity, and job fixtures. Version-1–7 documents migrate in memory and are written as version 8 on their next normal save. Calculated moves, stock simulation, playback, and preflight results remain transient.
+- JSON project files use a version-9 `CncProject` envelope containing the CAD document, persistent `CamJob`, nesting state, material and immutable machine snapshots, postprocessor identity, and job fixtures. Version-1–8 documents migrate in memory and are written as version 9 on their next normal save. Calculated moves, stock simulation, playback, and preflight results remain transient.
 - Persistent CAM mutations automatically save an existing project file using a same-directory temporary file and atomic replacement. New jobs without a path retain changes in memory and explicitly request a project save; calculated toolpath moves and playback remain transient and are recalculated after reopening.
 - FreeCAD is an architectural and behavioral reference only. It is not linked, embedded, or used as a runtime, and its general-purpose CAD object model will not define this router-focused product. See `FREECAD_REFERENCE.md`.
 - Selection and hit testing use document coordinates in Core. Rendering translates pointer locations before invoking them; pixel tolerance is converted to document millimetres using viewport zoom.
@@ -33,7 +33,7 @@ Project schema version 9 is current. Versions 1–8 are migrated in memory; the 
 
 ## CAM operation pipeline
 
-`ProfileOperationDefinition` stores ordered geometry references, the tool snapshot, compensation/direction, cutting parameters, enable state and output order. `ICamOperationCalculator` resolves those references and returns either a transient `ToolpathOperation` bearing the source operation ID or structured validation errors. Preview and UCCNC export rebuild enabled operations in visible order and refuse invalid output.
+`ProfileOperationDefinition` stores ordered geometry references, the tool snapshot, compensation/direction, cutting parameters, enable state and output order. `ICamOperationCalculator` resolves those references and returns either a transient `ToolpathOperation` bearing the source operation ID or structured validation errors. Preview and every declarative controller post rebuild enabled operations in visible order and refuse invalid output.
 
 `ToolpathPlaybackSession` in Simulation converts machine-independent moves into a transient time line. It owns play/pause/seek/speed state and produces immutable playback frames; Avalonia supplies wall-clock ticks, and Rendering only draws completed/future segments and the current cutter. Playback multipliers never mutate feeds, operation definitions, estimated machine time or exported G-code.
 

@@ -10,9 +10,9 @@ using CncCad.PostProcessors.Models;
 
 namespace CncCad.PostProcessors.Uccnc;
 
-public sealed class UccncPostProcessor() : DeclarativeGCodePostProcessor(CertifiedPostDefinitions.Uccnc);
+public sealed class UccncPostProcessor() : DeclarativeGCodePostProcessor(BuiltInPostDefinitions.Uccnc);
 
-public static class CertifiedPostDefinitions
+public static class BuiltInPostDefinitions
 {
     private const PostCapability Standard=PostCapability.Arcs|PostCapability.Dwell|PostCapability.ManualToolChange|PostCapability.AutomaticToolChange;
     // Built-in definitions remain certification-pending until parser evidence and a documented air-cut are attached.

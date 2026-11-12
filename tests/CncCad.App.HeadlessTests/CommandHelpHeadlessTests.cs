@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
@@ -22,6 +23,30 @@ namespace CncCad.App.HeadlessTests;
 
 public sealed class CommandHelpHeadlessTests
 {
+    public static TheoryData<double,double,ViewportLayout> SupportedViewportLayouts => new()
+    {
+        {1100,700,ViewportLayout.Design2D},
+        {1366,768,ViewportLayout.Preview3D},
+        {1600,900,ViewportLayout.HorizontalSplit},
+        {1920,1080,ViewportLayout.VerticalSplit}
+    };
+
+    [AvaloniaTheory]
+    [MemberData(nameof(SupportedViewportLayouts))]
+    public void SupportedWindowAndViewportMatrixKeepsActionsNamedAndWorkspaceUsable(double width,double height,ViewportLayout layout)
+    {
+        var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent());vm.CreateJob(new JobSettings{Name="Layout matrix",WidthMm=600,HeightMm=400,ThicknessMm=18});var window=new MainWindow{DataContext=vm,Width=width,Height=height};window.Show();Dispatcher.UIThread.RunJobs();
+        try
+        {
+            var layoutButton=window.FindControl<ToggleButton>(layout switch{ViewportLayout.Design2D=>"DesignViewButton",ViewportLayout.Preview3D=>"PreviewViewButton",ViewportLayout.HorizontalSplit=>"HorizontalSplitButton",ViewportLayout.VerticalSplit=>"VerticalSplitButton",_=>throw new ArgumentOutOfRangeException(nameof(layout))});Assert.NotNull(layoutButton);layoutButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();CommandHelp.ApplyAccessibilityTree(window);Assert.Equal(layout,vm.ViewportLayout);
+            var workspace=window.FindControl<Grid>("CenterWorkspaceGrid");Assert.NotNull(workspace);Assert.True(workspace.Bounds.Width>=760,$"{width}x{height}/{layout}: workspace width was {workspace.Bounds.Width:0.###}");Assert.True(workspace.Bounds.Height>=500,$"{width}x{height}/{layout}: workspace height was {workspace.Bounds.Height:0.###}");
+            var design=window.FindControl<CadCanvas>("Canvas");var preview=window.FindControl<CadCanvas>("PreviewCanvas");Assert.NotNull(design);Assert.NotNull(preview);Assert.Equal(layout!=ViewportLayout.Preview3D,design.IsVisible);Assert.Equal(layout!=ViewportLayout.Design2D,preview.IsVisible);
+            var unnamed=window.GetVisualDescendants().OfType<Button>().Where(control=>control.IsVisible&&string.IsNullOrWhiteSpace(AutomationProperties.GetName(control))).ToArray();Assert.Empty(unnamed);
+            var named=window.GetVisualDescendants().OfType<Button>().Where(control=>control.IsVisible).ToArray();Assert.NotEmpty(named);Assert.All(named,control=>Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetHelpText(control))));
+        }
+        finally{window.Close();}
+    }
+
     [AvaloniaFact]
     public void StartupAndWindowChromeUseTheVRouterBrandAssets()
     {
@@ -38,6 +63,8 @@ public sealed class CommandHelpHeadlessTests
     {
         var button=new Button{IsEnabled=false};CommandHelp.SetKey(button,"edit.copy");
         var tooltip=Assert.IsType<string>(ToolTip.GetTip(button));Assert.Contains("Select one or more vectors",tooltip);Assert.True(button.GetValue(ToolTip.ShowOnDisabledProperty));
+        Assert.Equal("Copy",AutomationProperties.GetName(button));Assert.Equal("Ctrl+C",AutomationProperties.GetAcceleratorKey(button));
+        button.IsEnabled=true;Assert.DoesNotContain("Unavailable:",Assert.IsType<string>(ToolTip.GetTip(button)));
     }
 
     [AvaloniaFact]

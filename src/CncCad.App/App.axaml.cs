@@ -49,7 +49,7 @@ public partial class App : Application
 
     private static IPostProcessorRegistry CreatePostProcessorRegistry(string dataDirectory)
     {
-        var definitions = CertifiedPostDefinitions.All.ToList();
+        var definitions = BuiltInPostDefinitions.All.ToList();
         var community = CommunityPostDefinitionLoader.LoadWithDiagnostics(Path.Combine(dataDirectory, "posts"));
         foreach (var error in community.Errors) Log.Warning("Community post was skipped: {Reason}", error);
         foreach (var definition in community.Definitions)

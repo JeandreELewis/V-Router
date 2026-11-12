@@ -1,5 +1,7 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.VisualTree;
 
 namespace CncCad.App;
 
@@ -80,7 +82,14 @@ public static class CommandHelp
 {
     public static readonly AttachedProperty<string?> KeyProperty = AvaloniaProperty.RegisterAttached<Control, Control, string?>("Key");
 
-    static CommandHelp() => KeyProperty.Changed.AddClassHandler<Control>((control, _) => Refresh(control));
+    static CommandHelp()
+    {
+        KeyProperty.Changed.AddClassHandler<Control>((control, _) => Refresh(control));
+        Control.IsEnabledProperty.Changed.AddClassHandler<Control>((control, _) =>
+        {
+            if (!string.IsNullOrWhiteSpace(GetKey(control))) Refresh(control);
+        });
+    }
 
     public static string? GetKey(Control control) => control.GetValue(KeyProperty);
     public static void SetKey(Control control, string? value) => control.SetValue(KeyProperty, value);
@@ -104,5 +113,33 @@ public static class CommandHelp
         ToolTip.SetTip(control, descriptor.Tooltip(control.IsEffectivelyEnabled));
         control.SetValue(ToolTip.ShowOnDisabledProperty, true);
         control.SetValue(ToolTip.ShowDelayProperty, 450);
+        ApplyAccessibility(control, descriptor);
+    }
+
+    /// <summary>
+    /// Applies stable names and help text to every actionable control currently
+    /// materialized in a window. This is deliberately derived from the same
+    /// command description used by tooltips so mouse, keyboard and assistive
+    /// technology users receive the same explanation.
+    /// </summary>
+    public static void ApplyAccessibilityTree(Visual root)
+    {
+        foreach (var control in root.GetVisualDescendants().OfType<Control>())
+        {
+            if (control is not Button and not MenuItem) continue;
+            if (DescriptorFor(control) is { } descriptor) ApplyAccessibility(control, descriptor);
+        }
+    }
+
+    private static void ApplyAccessibility(Control control, CommandDescriptor descriptor)
+    {
+        if (string.IsNullOrWhiteSpace(AutomationProperties.GetName(control)))
+            AutomationProperties.SetName(control, descriptor.Title);
+        if (string.IsNullOrWhiteSpace(AutomationProperties.GetHelpText(control)))
+            AutomationProperties.SetHelpText(control, descriptor.Summary);
+        if (string.IsNullOrWhiteSpace(AutomationProperties.GetAutomationId(control)) && GetKey(control) is { Length: > 0 } key)
+            AutomationProperties.SetAutomationId(control, key);
+        if (!string.IsNullOrWhiteSpace(descriptor.Shortcut) && string.IsNullOrWhiteSpace(AutomationProperties.GetAcceleratorKey(control)))
+            AutomationProperties.SetAcceleratorKey(control, descriptor.Shortcut);
     }
 }

@@ -13,7 +13,7 @@ public class UccncTests
 {
     private static PostProcessResult Process(ToolpathProgram program,MachineProfile? machine=null,MeasurementUnit unit=MeasurementUnit.Millimetres,PostDefinition? definition=null,PostExportScope scope=PostExportScope.Combined)
     {
-        definition??=CertifiedPostDefinitions.Uccnc;
+        definition??=BuiltInPostDefinitions.Uccnc;
         machine??=new(){ControllerFamily=definition.ControllerFamily};
         return new DeclarativeGCodePostProcessor(definition).Process(new(program,machine,unit,definition,scope));
     }
@@ -74,7 +74,7 @@ public class UccncTests
 
     [Fact] public void AbsoluteArcCentersApplyTheWorkDatum()
     {
-        var definition=CertifiedPostDefinitions.Uccnc with{ArcMode=PostArcMode.AbsoluteIj};
+        var definition=BuiltInPostDefinitions.Uccnc with{ArcMode=PostArcMode.AbsoluteIj};
         var operation=new ToolpathOperation{Moves=[new RapidMove(new(110,200),5),new ArcMove(new(100,210),new(100,200),-1,800,false)]};
         var code=Code(Process(new(){Operations=[operation]},new(){WorkZeroDocumentXmm=90,WorkZeroDocumentYmm=180},definition:definition));
         Assert.Contains("I10.000 J20.000",code);
@@ -88,7 +88,7 @@ public class UccncTests
     [InlineData("linuxcnc")]
     public void BuiltInPostsGenerateDeterministicMetricAndImperialPrograms(string id)
     {
-        var definition=CertifiedPostDefinitions.All.Single(x=>x.Id==id);
+        var definition=BuiltInPostDefinitions.All.Single(x=>x.Id==id);
         var operation=new ToolpathOperation{Name="Cut",Moves=[new ToolChange(1,"6mm End Mill"),new SpindleStart(18000),new RapidMove(new(25.4,25.4),5),new LinearMove(new(50.8,25.4),-2,1000),new DwellMove(.25),new SpindleStop()]};
         var machine=new MachineProfile{ControllerFamily=definition.ControllerFamily};
         var metric=Process(new(){Name="Proof",Operations=[operation]},machine,MeasurementUnit.Millimetres,definition,PostExportScope.SeparateByTool);
@@ -98,35 +98,35 @@ public class UccncTests
 
     [Fact] public void BuiltInDefinitionsExposeControllerSpecificSafeStartupDialects()
     {
-        Assert.Equal(".tap",CertifiedPostDefinitions.Uccnc.Extension);Assert.Equal(".tap",CertifiedPostDefinitions.Mach3.Extension);Assert.Equal(".tap",CertifiedPostDefinitions.Mach4.Extension);Assert.Equal(".gcode",CertifiedPostDefinitions.Grbl.Extension);Assert.Equal(".ngc",CertifiedPostDefinitions.LinuxCnc.Extension);Assert.Equal(PostCommentStyle.Semicolon,CertifiedPostDefinitions.Grbl.CommentStyle);Assert.DoesNotContain("G91.1",CertifiedPostDefinitions.Grbl.HeaderLines);Assert.DoesNotContain("G49",CertifiedPostDefinitions.Grbl.HeaderLines);Assert.Contains("G64 P0.01",CertifiedPostDefinitions.LinuxCnc.HeaderLines);Assert.All(CertifiedPostDefinitions.All,definition=>Assert.Equal(PostCertificationStatus.CertificationPending,definition.CertificationStatus));
+        Assert.Equal(".tap",BuiltInPostDefinitions.Uccnc.Extension);Assert.Equal(".tap",BuiltInPostDefinitions.Mach3.Extension);Assert.Equal(".tap",BuiltInPostDefinitions.Mach4.Extension);Assert.Equal(".gcode",BuiltInPostDefinitions.Grbl.Extension);Assert.Equal(".ngc",BuiltInPostDefinitions.LinuxCnc.Extension);Assert.Equal(PostCommentStyle.Semicolon,BuiltInPostDefinitions.Grbl.CommentStyle);Assert.DoesNotContain("G91.1",BuiltInPostDefinitions.Grbl.HeaderLines);Assert.DoesNotContain("G49",BuiltInPostDefinitions.Grbl.HeaderLines);Assert.Contains("G64 P0.01",BuiltInPostDefinitions.LinuxCnc.HeaderLines);Assert.All(BuiltInPostDefinitions.All,definition=>Assert.Equal(PostCertificationStatus.CertificationPending,definition.CertificationStatus));
     }
 
     [Fact] public void UnsupportedCombinedToolChangesProduceCapabilityDiagnostic()
     {
         var program=new ToolpathProgram{Operations=[new(){Moves=[new ToolChange(1,"A")]},new(){Moves=[new ToolChange(2,"B")]}]};
-        var result=Process(program,new(){ControllerFamily=ControllerFamily.Grbl},definition:CertifiedPostDefinitions.Grbl);
+        var result=Process(program,new(){ControllerFamily=ControllerFamily.Grbl},definition:BuiltInPostDefinitions.Grbl);
         Assert.False(result.Success);Assert.Contains(result.Errors,x=>x.Code=="multi-tool-file-unsafe");
     }
 
     [Fact] public void SeparateByToolCreatesIndependentFilesWithoutPause()
     {
         var program=new ToolpathProgram{Name="Batch",Operations=[new(){Moves=[new ToolChange(1,"A"),new RapidMove(new(0,0),5)]},new(){Moves=[new ToolChange(2,"B"),new RapidMove(new(1,1),5)]}]};
-        var result=Process(program,new(){ControllerFamily=ControllerFamily.Grbl},definition:CertifiedPostDefinitions.Grbl,scope:PostExportScope.SeparateByTool);
+        var result=Process(program,new(){ControllerFamily=ControllerFamily.Grbl},definition:BuiltInPostDefinitions.Grbl,scope:PostExportScope.SeparateByTool);
         Assert.True(result.Success);Assert.Equal(2,result.Files.Count);Assert.All(result.Files,x=>Assert.DoesNotContain("M0",x.Content));
     }
 
     [Fact] public void ManualToolChangesAreAlwaysSplitIntoIndependentMachineFiles()
     {
         var program=new ToolpathProgram{Name="Manual",Operations=[new(){Moves=[new ToolChange(1,"A"),new RapidMove(new(0,0),5)]},new(){Moves=[new ToolChange(2,"B"),new RapidMove(new(1,1),5)]}]};
-        var linux=Process(program,new(){ControllerFamily=ControllerFamily.LinuxCnc,ToolChangeMode=MachineToolChangeMode.ManualPause},definition:CertifiedPostDefinitions.LinuxCnc);
+        var linux=Process(program,new(){ControllerFamily=ControllerFamily.LinuxCnc,ToolChangeMode=MachineToolChangeMode.ManualPause},definition:BuiltInPostDefinitions.LinuxCnc);
         Assert.False(linux.Success);Assert.Contains(linux.Errors,x=>x.Code=="multi-tool-file-unsafe");
-        var split=Process(program,new(){ControllerFamily=ControllerFamily.LinuxCnc,ToolChangeMode=MachineToolChangeMode.ManualPause},definition:CertifiedPostDefinitions.LinuxCnc,scope:PostExportScope.SeparateByTool);
+        var split=Process(program,new(){ControllerFamily=ControllerFamily.LinuxCnc,ToolChangeMode=MachineToolChangeMode.ManualPause},definition:BuiltInPostDefinitions.LinuxCnc,scope:PostExportScope.SeparateByTool);
         Assert.True(split.Success);Assert.Equal(2,split.Files.Count);Assert.All(split.Files,file=>Assert.DoesNotContain("M0",file.Content));
     }
 
     [Fact] public void CombinedMultiToolFileIsBlockedEvenForCertifiedAutomaticMachineAndPost()
     {
-        var definition=CertifiedPostDefinitions.Uccnc with{CertificationStatus=PostCertificationStatus.Certified};
+        var definition=BuiltInPostDefinitions.Uccnc with{CertificationStatus=PostCertificationStatus.Certified};
         var machine=new MachineProfile{ControllerFamily=ControllerFamily.Uccnc,ToolChangeMode=MachineToolChangeMode.Automatic};
         var program=new ToolpathProgram{Name="ATC",Operations=[new(){Moves=[new ToolChange(1,"A"),new RapidMove(new(0,0),5)]},new(){Moves=[new ToolChange(2,"B"),new RapidMove(new(1,1),5)]}]};
         var result=Process(program,machine,definition:definition);
@@ -137,17 +137,17 @@ public class UccncTests
     [Fact] public void SameCutterCanShareOneFileWithoutRepeatedToolPause()
     {
         var program=new ToolpathProgram{Name="Same cutter",Operations=[new(){Moves=[new ToolChange(1,"A"),new RapidMove(new(0,0),5)]},new(){Moves=[new ToolChange(1,"A"),new RapidMove(new(1,1),5)]}]};
-        var result=Process(program,new(){ControllerFamily=ControllerFamily.LinuxCnc,ToolChangeMode=MachineToolChangeMode.ManualPause},definition:CertifiedPostDefinitions.LinuxCnc);
+        var result=Process(program,new(){ControllerFamily=ControllerFamily.LinuxCnc,ToolChangeMode=MachineToolChangeMode.ManualPause},definition:BuiltInPostDefinitions.LinuxCnc);
         Assert.True(result.Success);var code=Code(result);Assert.Equal(1,code.Split("M0").Length-1);
     }
 
     [Fact] public void DifferentCuttersCannotReuseAToolNumber()
     {
         var program=new ToolpathProgram{Name="Bad tools",Operations=[new(){Moves=[new ToolChange(1,"A")]},new(){Moves=[new ToolChange(1,"B")]}]};
-        var result=Process(program,new(){ControllerFamily=ControllerFamily.Uccnc},definition:CertifiedPostDefinitions.Uccnc,scope:PostExportScope.SeparateByTool);
+        var result=Process(program,new(){ControllerFamily=ControllerFamily.Uccnc},definition:BuiltInPostDefinitions.Uccnc,scope:PostExportScope.SeparateByTool);
         Assert.False(result.Success);Assert.Contains(result.Errors,x=>x.Code=="duplicate-tool-number");
         var sameName=new ToolpathProgram{Name="Bad snapshots",Operations=[new(){ToolId=Guid.NewGuid(),Moves=[new ToolChange(1,"End mill")]},new(){ToolId=Guid.NewGuid(),Moves=[new ToolChange(1,"End mill")]}]};
-        var sameNameResult=Process(sameName,new(){ControllerFamily=ControllerFamily.Uccnc},definition:CertifiedPostDefinitions.Uccnc,scope:PostExportScope.SeparateByTool);
+        var sameNameResult=Process(sameName,new(){ControllerFamily=ControllerFamily.Uccnc},definition:BuiltInPostDefinitions.Uccnc,scope:PostExportScope.SeparateByTool);
         Assert.False(sameNameResult.Success);Assert.Contains(sameNameResult.Errors,x=>x.Code=="duplicate-tool-number");
     }
 
