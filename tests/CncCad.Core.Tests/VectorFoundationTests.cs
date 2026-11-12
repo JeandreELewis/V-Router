@@ -92,11 +92,20 @@ public class VectorFoundationTests
           <g style="display:none"><line x1="0" y1="5" x2="90" y2="5"/></g>
           <line visibility="hidden" x1="0" y1="10" x2="90" y2="10"/>
           <line x1="10" y1="20" x2="30" y2="20"/>
-          <use href="#template"/>
+          <use href="#template" x="5" y="10" transform="translate(2 3)"/>
         </svg>
         """;
-        using var stream=new MemoryStream(Encoding.UTF8.GetBytes(svg));var result=new SvgVectorImporter().Import(new("visibility.svg",stream));var line=Assert.IsType<LineEntity>(Assert.Single(result.Entities));Assert.Equal(20,line.Start.Y);Assert.Contains("use",result.Unsupported);Assert.DoesNotContain("path",result.Unsupported);
-        using var hiddenStream=new MemoryStream(Encoding.UTF8.GetBytes(svg));var withHidden=new SvgVectorImporter().Import(new("visibility.svg",hiddenStream,IncludeHidden:true));Assert.Equal(3,withHidden.Entities.Count);Assert.Contains("use",withHidden.Unsupported);
+        using var stream=new MemoryStream(Encoding.UTF8.GetBytes(svg));var result=new SvgVectorImporter().Import(new("visibility.svg",stream));Assert.Equal(2,result.Entities.Count);Assert.Empty(result.Unsupported);var world=result.Entities.Select(EntityGeometry.WorldPoints).OrderBy(points=>points[0].X).ToArray();Assert.Equal(new Point2D(7,37),world[0][0]);Assert.Equal(new Point2D(97,37),world[0][1]);Assert.Equal(20,world[1][0].DistanceTo(world[1][1]),6);
+        using var hiddenStream=new MemoryStream(Encoding.UTF8.GetBytes(svg));var withHidden=new SvgVectorImporter().Import(new("visibility.svg",hiddenStream,IncludeHidden:true));Assert.Equal(4,withHidden.Entities.Count);Assert.Empty(withHidden.Unsupported);
+    }
+
+    [Fact]
+    public void SvgViewBoxHonorsMeetNoneAlignmentPhysicalUnitsAndCssUserUnits()
+    {
+        const string meet="<svg xmlns='http://www.w3.org/2000/svg' width='200mm' height='100mm' viewBox='0 0 100 100'><line x1='0' y1='50' x2='100' y2='50'/></svg>";using(var stream=new MemoryStream(Encoding.UTF8.GetBytes(meet))){var result=new SvgVectorImporter().Import(new("meet.svg",stream));var bounds=Assert.Single(result.Entities).GetBounds();Assert.Equal(50,bounds.MinX,6);Assert.Equal(150,bounds.MaxX,6);Assert.Equal(50,bounds.MinY,6);Assert.Equal(1,result.AppliedScaleToMillimetres,6);}
+        const string none="<svg xmlns='http://www.w3.org/2000/svg' width='200mm' height='100mm' viewBox='0 0 100 100' preserveAspectRatio='none'><line x1='0' y1='50' x2='100' y2='50'/></svg>";using(var stream=new MemoryStream(Encoding.UTF8.GetBytes(none))){var bounds=Assert.Single(new SvgVectorImporter().Import(new("none.svg",stream)).Entities).GetBounds();Assert.Equal(0,bounds.MinX,6);Assert.Equal(200,bounds.MaxX,6);Assert.Equal(50,bounds.MinY,6);}
+        const string units="<svg xmlns='http://www.w3.org/2000/svg' width='2in' height='25.4mm' viewBox='0 0 2 1' preserveAspectRatio='none'><line x1='0' y1='0' x2='2' y2='1'/></svg>";using(var stream=new MemoryStream(Encoding.UTF8.GetBytes(units))){var result=new SvgVectorImporter().Import(new("units.svg",stream,1,new(10,20)));var bounds=Assert.Single(result.Entities).GetBounds();Assert.Equal(10,bounds.MinX,6);Assert.Equal(60.8,bounds.MaxX,6);Assert.Equal(20,bounds.MinY,6);Assert.Equal(45.4,bounds.MaxY,6);}
+        const string css="<svg xmlns='http://www.w3.org/2000/svg' width='25.4mm' height='25.4mm'><line x1='0' y1='0' x2='96' y2='0'/></svg>";using(var stream=new MemoryStream(Encoding.UTF8.GetBytes(css))){var result=new SvgVectorImporter().Import(new("css.svg",stream));var bounds=Assert.Single(result.Entities).GetBounds();Assert.Equal(25.4,bounds.MaxX,6);Assert.Equal(25.4,bounds.MinY,6);Assert.Equal(25.4/96,result.AppliedScaleToMillimetres,8);}
     }
 
     [Fact]
