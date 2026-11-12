@@ -140,6 +140,13 @@ public class VectorFoundationTests
     }
 
     [Fact]
+    public void DxfSplineEvaluatesDegreeKnotsAndWeightsInsteadOfCuttingTheControlPolygon()
+    {
+        const string dxf="0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nSPLINE\n8\nCut\n70\n8\n71\n2\n72\n6\n73\n3\n74\n0\n40\n0\n40\n0\n40\n0\n40\n1\n40\n1\n40\n1\n10\n0\n20\n0\n30\n0\n41\n1\n10\n5\n20\n10\n30\n0\n41\n1\n10\n10\n20\n0\n30\n0\n41\n1\n0\nENDSEC\n0\nEOF\n";
+        using var stream=new MemoryStream(Encoding.ASCII.GetBytes(dxf));var result=new DxfVectorImporter().Import(new("spline.dxf",stream));var curve=Assert.IsType<PolylineEntity>(Assert.Single(result.Entities));Assert.True(curve.Points.Count>24);Assert.Equal(new Point2D(0,0),curve.Points[0]);Assert.Equal(new Point2D(10,0),curve.Points[^1]);var top=curve.Points.MaxBy(point=>point.Y);Assert.Equal(5,top.X,.05);Assert.Equal(5,top.Y,.05);Assert.DoesNotContain(curve.Points,point=>Math.Abs(point.X-5)<1e-6&&Math.Abs(point.Y-10)<1e-6);Assert.Contains(result.Approximations,item=>item.Code=="dxf-spline-sampled");
+    }
+
+    [Fact]
     public void ImportResultSeparatesApproximationsFromUnsupportedContent()
     {
         const string svg="<svg xmlns='http://www.w3.org/2000/svg' width='20mm' height='20mm'><path d='M 2 10 A 8 5 20 0 1 18 10'/><text x='1' y='1'>x</text></svg>";using var stream=new MemoryStream(Encoding.UTF8.GetBytes(svg));var result=new SvgVectorImporter().Import(new("arc.svg",stream));Assert.Contains(result.Approximations,item=>item.Code=="svg-arc-cubic");Assert.Contains("text",result.Unsupported);Assert.Empty(result.Warnings);Assert.Empty(result.OtherWarnings);
