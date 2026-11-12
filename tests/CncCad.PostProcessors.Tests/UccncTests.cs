@@ -103,7 +103,7 @@ public class UccncTests
     {
         var program=new ToolpathProgram{Operations=[new(){Moves=[new ToolChange(1,"A")]},new(){Moves=[new ToolChange(2,"B")]}]};
         var result=Process(program,new(){ControllerFamily=ControllerFamily.Grbl},definition:CertifiedPostDefinitions.Grbl);
-        Assert.False(result.Success);Assert.Contains(result.Errors,x=>x.Code=="multi-tool-file-unsafe");Assert.Contains(result.Errors,x=>x.Code=="automatic-tool-change");
+        Assert.False(result.Success);Assert.Contains(result.Errors,x=>x.Code=="multi-tool-file-unsafe");
     }
 
     [Fact] public void SeparateByToolCreatesIndependentFilesWithoutPause()
@@ -122,15 +122,14 @@ public class UccncTests
         Assert.True(split.Success);Assert.Equal(2,split.Files.Count);Assert.All(split.Files,file=>Assert.DoesNotContain("M0",file.Content));
     }
 
-    [Fact] public void CombinedMultiToolFileRequiresCertifiedAutomaticMachineAndPost()
+    [Fact] public void CombinedMultiToolFileIsBlockedEvenForCertifiedAutomaticMachineAndPost()
     {
         var definition=CertifiedPostDefinitions.Uccnc with{CertificationStatus=PostCertificationStatus.Certified};
         var machine=new MachineProfile{ControllerFamily=ControllerFamily.Uccnc,ToolChangeMode=MachineToolChangeMode.Automatic};
         var program=new ToolpathProgram{Name="ATC",Operations=[new(){Moves=[new ToolChange(1,"A"),new RapidMove(new(0,0),5)]},new(){Moves=[new ToolChange(2,"B"),new RapidMove(new(1,1),5)]}]};
         var result=Process(program,machine,definition:definition);
-        Assert.True(result.Success);var code=Code(result);Assert.Contains("T1 M6",code);Assert.Contains("T2 M6",code);
-        var pending=Process(program,machine,definition:CertifiedPostDefinitions.Uccnc);
-        Assert.False(pending.Success);Assert.Contains(pending.Errors,x=>x.Code=="atc-post-uncertified");
+        Assert.False(result.Success);Assert.Empty(result.Files);Assert.Contains(result.Errors,x=>x.Code=="multi-tool-file-unsafe"&&x.Message.Contains("only one cutter"));
+        var split=Process(program,machine,definition:definition,scope:PostExportScope.SeparateByTool);Assert.True(split.Success);Assert.Equal(2,split.Files.Count);Assert.All(split.Files,file=>Assert.Equal(1,file.Content.Split("Load T").Length-1));
     }
 
     [Fact] public void SameCutterCanShareOneFileWithoutRepeatedToolPause()

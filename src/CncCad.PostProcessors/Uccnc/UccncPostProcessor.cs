@@ -81,14 +81,7 @@ public class DeclarativeGCodePostProcessor(PostDefinition definition) : IPostPro
         var reusedNumber=operationTools.GroupBy(x=>x.Change!.ToolNumber).FirstOrDefault(group=>group.Select(x=>x.Change!.ToolName.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count()>1||group.Where(x=>x.ToolId!=Guid.Empty).Select(x=>x.ToolId).Distinct().Count()>1);
         if(reusedNumber is not null)result.Add(new(PostDiagnosticSeverity.Error,"duplicate-tool-number",$"Tool number T{reusedNumber.Key} is assigned to more than one cutter. Assign a unique number to every different cutter."));
         if(request.ExportScope==PostExportScope.Combined&&tools.Length>1)
-        {
-            if(request.MachineSnapshot.ToolChangeMode!=MachineToolChangeMode.Automatic)
-                result.Add(new(PostDiagnosticSeverity.Error,"multi-tool-file-unsafe","A file containing multiple cutters is blocked for this machine. Export separate files per tool unless the machine has a verified automatic tool changer."));
-            if(Definition.ToolChangeBehavior!=PostToolChangeBehavior.AutomaticM6||!Definition.Capabilities.HasFlag(PostCapability.AutomaticToolChange))
-                result.Add(new(PostDiagnosticSeverity.Error,"automatic-tool-change",$"{Definition.DisplayName} is not configured to emit automatic tool-change commands. Export separate files per tool."));
-            if(Definition.CertificationStatus!=PostCertificationStatus.Certified)
-                result.Add(new(PostDiagnosticSeverity.Error,"atc-post-uncertified",$"{Definition.DisplayName} has not been certified for automatic tool changes. Export separate files per tool."));
-        }
+            result.Add(new(PostDiagnosticSeverity.Error,"multi-tool-file-unsafe","A runnable machine file may contain only one cutter. Export separate files per tool."));
         if(!request.MachineSnapshot.SupportsArcs&&request.Program.Operations.SelectMany(x=>x.Moves).Any(x=>x is ArcMove))result.Add(new(PostDiagnosticSeverity.Error,"machine-arcs","The selected machine profile does not allow arcs."));
         if(request.MachineSnapshot.ControllerFamily!=ControllerFamily.Community&&request.MachineSnapshot.ControllerFamily!=Definition.ControllerFamily)result.Add(new(PostDiagnosticSeverity.Error,"controller-family",$"The {request.MachineSnapshot.ControllerFamily} machine profile is not compatible with the {Definition.DisplayName} post."));
         if(Definition.CertificationStatus!=PostCertificationStatus.Certified)result.Add(new(PostDiagnosticSeverity.Warning,"uncertified",$"{Definition.DisplayName} is {Definition.CertificationStatus.ToString().ToLowerInvariant()}; verify with an air cut before machining."));

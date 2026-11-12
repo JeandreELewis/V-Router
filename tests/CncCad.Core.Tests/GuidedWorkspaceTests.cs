@@ -280,13 +280,13 @@ public class GuidedWorkspaceTests
         var missing=Path.Combine(Path.GetTempPath(),$"missing-{Guid.NewGuid():N}.cnccad");await Assert.ThrowsAsync<FileNotFoundException>(()=>vm.OpenProjectAsync(missing));Assert.Equal(segmentCount,vm.Playback.Frame.Segments.Count);
     }
 
-    [Fact] public async Task ModernDoor_ReopensAndBlocksCombinedMultiToolOutputForManualRouter()
+    [Fact] public async Task ModernDoor_ReopensAndBlocksCombinedMultiToolOutputEvenForAutomaticRouter()
     {
         var path=Path.Combine(Path.GetTempPath(),$"modern-door-{Guid.NewGuid():N}.cnccad");
         try
         {
             await using(var stream=File.Create(path))await new JsonProjectSerializer().SaveAsync(ModernDoorAcceptanceProject.Create(),stream);
-            var vm=ViewModel();await vm.OpenProjectAsync(path);vm.SelectedOperation=vm.Operations[0];
+            var vm=ViewModel();await vm.OpenProjectAsync(path);vm.SelectedOperation=vm.Operations[0];vm.CamJob.Machine=vm.CamJob.Machine! with{ToolChangeMode=MachineToolChangeMode.Automatic};
             var selected=vm.GenerateExportPrograms(ToolpathExportScope.SelectedToolpath);var blocked=Assert.Throws<InvalidOperationException>(()=>vm.GenerateExportPrograms(ToolpathExportScope.VisibleCombined));var separate=vm.GenerateExportPrograms(ToolpathExportScope.VisibleSeparateFiles);
             Assert.Contains("separate files",blocked.Message,StringComparison.OrdinalIgnoreCase);Assert.Single(selected);Assert.Equal(5,separate.Count);Assert.All([..selected,..separate],file=>{Assert.Equal(".tap",file.Extension);Assert.Contains("M30",file.Text);});
         }
