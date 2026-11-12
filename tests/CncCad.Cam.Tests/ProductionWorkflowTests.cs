@@ -71,6 +71,21 @@ public sealed class ProductionWorkflowTests
         var definition=new EngraveOperationDefinition{Tool=Tool(1),IsEnabled=true,CalculatedToolpath=new(){Moves=[new RapidMove(new(5,5),5),new LinearMove(new(5,5),-3,200),new LinearMove(new(20,5),-3,500)]}};var field=new CpuStockSimulationService().Simulate(50,30,10,[definition]);Assert.InRange(field.CellSizeMm,.1,1);Assert.InRange(field.Columns,1,2048);Assert.InRange(field.Rows,1,2048);var minimum=Enumerable.Range(0,field.Rows).SelectMany(row=>Enumerable.Range(0,field.Columns).Select(column=>field[column,row])).Min();Assert.Equal(-3,minimum,3);
     }
     [Fact]
+    public void CpuStockSimulationHonoursSpindleStateIncludingUnsafeRapidMotion()
+    {
+        var definition=new EngraveOperationDefinition{Tool=Tool(1),IsEnabled=true,CalculatedToolpath=new(){Moves=[new RapidMove(new(5,5),5),new SpindleStart(12000),new RapidMove(new(10,5),-2),new SpindleStop(),new LinearMove(new(20,5),-4,500)]}};var field=new CpuStockSimulationService().Simulate(30,15,10,[definition]);
+        double Near(double x,double y)=>field[Math.Clamp((int)(x/field.CellSizeMm),0,field.Columns-1),Math.Clamp((int)(y/field.CellSizeMm),0,field.Rows-1)];
+        Assert.True(Near(10,5)<-1.5);Assert.Equal(0,Near(20,5));
+    }
+    [Theory]
+    [InlineData(ToolType.BallNose,null)]
+    [InlineData(ToolType.EngravingBit,60d)]
+    public void CpuStockSimulationUsesTheSelectedCutterProfile(ToolType type,double? angle)
+    {
+        var tool=Tool(10) with{Type=type,VBitAngleDegrees=angle,TipDiameterMm=angle is null?null:.2};var definition=new EngraveOperationDefinition{Tool=tool,IsEnabled=true,CalculatedToolpath=new(){Moves=[new RapidMove(new(15,15),5),new SpindleStart(12000),new LinearMove(new(15,15),-5,300),new SpindleStop()]}};var field=new CpuStockSimulationService().Simulate(30,30,10,[definition]);var values=Enumerable.Range(0,field.Rows).SelectMany(row=>Enumerable.Range(0,field.Columns).Select(column=>(Height:field[column,row],X:(column+.5)*field.CellSizeMm,Y:(row+.5)*field.CellSizeMm))).Where(sample=>sample.Height<0).ToArray();
+        Assert.NotEmpty(values);var center=values.MinBy(sample=>Math.Abs(sample.X-15)+Math.Abs(sample.Y-15));var outer=values.MaxBy(sample=>Math.Sqrt(Math.Pow(sample.X-15,2)+Math.Pow(sample.Y-15,2)));Assert.True(center.Height<outer.Height,$"Expected {type} centre {center.Height} below outer profile {outer.Height}.");
+    }
+    [Fact]
     public void MaterialMachineToolPreset_CreatesImmutableOperationSnapshot()
     {
         var tool=new CncTool{Name="6mm",DiameterMm=6,FeedRateMmPerMin=1000,PlungeRateMmPerMin=250,SpindleRpm=16000,StepDownMm=2};var preset=new ToolCuttingPreset{ToolId=tool.Id,MachineId=Guid.NewGuid(),MaterialId=Guid.NewGuid(),FeedRateMmPerMin=2200,PlungeRateMmPerMin=500,SpindleRpm=18000,PassDepthMm=3,StepOverPercent=40};var snapshot=preset.Apply(tool);tool.FeedRateMmPerMin=900;Assert.Equal(2200,snapshot.FeedRateMmPerMin);Assert.Equal(3,snapshot.StepDownMm);Assert.Empty(preset.Validate());

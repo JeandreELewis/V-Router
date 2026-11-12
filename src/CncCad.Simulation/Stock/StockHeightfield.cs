@@ -41,7 +41,13 @@ public sealed class CpuStockSimulationService : IStockSimulationService
 
     private static void Apply(StockHeightfield field,CamOperationDefinition definition)
     {
-        var program=new ToolpathProgram{Operations=[definition.CalculatedToolpath!]};var evaluation=MotionEvaluator.Evaluate(program,new(5000));if(!evaluation.Success)throw new InvalidDataException(string.Join(" ",evaluation.Diagnostics.Select(x=>x.Message)));foreach(var trace in evaluation.Events.Where(trace=>trace.Kind is MotionEventKind.Linear or MotionEventKind.Arc))CutTrace(field,definition.Tool,trace);
+        var program=new ToolpathProgram{Operations=[definition.CalculatedToolpath!]};var evaluation=MotionEvaluator.Evaluate(program,new(5000));if(!evaluation.Success)throw new InvalidDataException(string.Join(" ",evaluation.Diagnostics.Select(x=>x.Message)));var hasSpindleEvents=evaluation.Events.Any(trace=>trace.Kind is MotionEventKind.SpindleStart or MotionEventKind.SpindleStop);var spindleOn=!hasSpindleEvents;
+        foreach(var trace in evaluation.Events)
+        {
+            if(trace.Kind==MotionEventKind.SpindleStart){spindleOn=true;continue;}
+            if(trace.Kind==MotionEventKind.SpindleStop){spindleOn=false;continue;}
+            if(spindleOn&&trace.Kind is MotionEventKind.Rapid or MotionEventKind.Linear or MotionEventKind.Arc)CutTrace(field,definition.Tool,trace);
+        }
     }
     private static void CutTrace(StockHeightfield field,ToolSnapshot tool,MotionTraceEvent trace)
     {
@@ -50,11 +56,11 @@ public sealed class CpuStockSimulationService : IStockSimulationService
     private static void Sweep(StockHeightfield field,ToolSnapshot tool,Point2D center,double tipZ)
     {
         if(tipZ>=0)return;var radius=tool.DiameterMm/2;var minX=Math.Max(0,(int)Math.Floor((center.X-radius)/field.CellSizeMm));var maxX=Math.Min(field.Columns-1,(int)Math.Ceiling((center.X+radius)/field.CellSizeMm));var minY=Math.Max(0,(int)Math.Floor((center.Y-radius)/field.CellSizeMm));var maxY=Math.Min(field.Rows-1,(int)Math.Ceiling((center.Y+radius)/field.CellSizeMm));
-        var vbit=tool.Type==ToolType.VBit&&tool.VBitAngleDegrees is >0;var tangent=vbit?Math.Tan(tool.VBitAngleDegrees!.Value*Math.PI/360):0;
+        var vbit=tool.Type is ToolType.VBit or ToolType.EngravingBit&&tool.VBitAngleDegrees is >0;var tangent=vbit?Math.Tan(tool.VBitAngleDegrees!.Value*Math.PI/360):0;var ball=tool.Type is ToolType.BallNose or ToolType.TaperedBallNose;
         for(var row=minY;row<=maxY;row++)for(var column=minX;column<=maxX;column++)
         {
             var x=(column+.5)*field.CellSizeMm;var y=(row+.5)*field.CellSizeMm;var radial=Math.Sqrt(Math.Pow(x-center.X,2)+Math.Pow(y-center.Y,2));if(radial>radius)continue;
-            var surface=vbit?tipZ+Math.Max(0,radial-(tool.TipDiameterMm??0)/2)/tangent:tipZ;if(surface<0)field.Remove(column,row,surface);
+            var surface=vbit?tipZ+Math.Max(0,radial-(tool.TipDiameterMm??0)/2)/tangent:ball?tipZ+radius-Math.Sqrt(Math.Max(0,radius*radius-radial*radial)):tipZ;if(surface<0)field.Remove(column,row,surface);
         }
     }
 }
