@@ -44,7 +44,7 @@ public static class EntityGeometry
 
     public static void Translate(CadEntity entity, Vector2D delta)
     {
-        var inverse=entity.Transform.Inverse();var localOrigin=inverse.Transform(new(0,0));var localEnd=inverse.Transform(new(delta.X,delta.Y));delta=localEnd-localOrigin;
+        var worldDelta=delta;var inverse=entity.Transform.Inverse();var localOrigin=inverse.Transform(new(0,0));var localEnd=inverse.Transform(new(delta.X,delta.Y));delta=localEnd-localOrigin;
         switch (entity)
         {
             case LineEntity line: line.Start += delta; line.End += delta; break;
@@ -54,8 +54,8 @@ public static class EntityGeometry
             case DrillPointEntity drill: drill.Position += delta; break;
             case ArcEntity arc: arc.Center += delta; break;
             case EllipseEntity ellipse: ellipse.Center += delta; break;
-            case VectorPathEntity path: path.Transform=Matrix2D.Then(path.Transform,Matrix2D.Translation(delta.X,delta.Y));break;
-            case TextEntity text: text.Transform=Matrix2D.Then(text.Transform,Matrix2D.Translation(delta.X,delta.Y));break;
+            case VectorPathEntity path: path.Transform=Matrix2D.Then(path.Transform,Matrix2D.Translation(worldDelta.X,worldDelta.Y));break;
+            case TextEntity text: text.Transform=Matrix2D.Then(text.Transform,Matrix2D.Translation(worldDelta.X,worldDelta.Y));break;
             default: throw new NotSupportedException($"Translation is not implemented for {entity.GetType().Name}.");
         }
     }

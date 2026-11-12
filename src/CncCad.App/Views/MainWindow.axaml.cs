@@ -188,7 +188,7 @@ public partial class MainWindow : Window
     private void PlaybackRestart_Click(object? s, RoutedEventArgs e) { ViewModel.Playback.Restart(); _playbackClock.Restart(); UpdatePlaybackFrame(); }
     private void PlaybackSlider_ValueChanged(object? sender, RangeBaseValueChangedEventArgs e) { if (_updatingPlayback || !ViewModel.HasPlayback) return; ViewModel.Playback.Seek(e.NewValue / 100); UpdatePlaybackFrame(); }
     private void PlaybackSpeed_SelectionChanged(object? sender, SelectionChangedEventArgs e) { if (sender is ComboBox { SelectedItem: double speed }) { ViewModel.PlaybackSpeed = speed; ViewModel.Playback.SetSpeed(speed); } }
-    private void Delete_Click(object? s, RoutedEventArgs e) { ViewModel.DeleteSelection(); Canvas.InvalidateVisual(); }
+    private void Delete_Click(object? s, RoutedEventArgs e)=>RunCadAction(ViewModel.DeleteSelection);
     private void SelectAll_Click(object? s,RoutedEventArgs e){ViewModel.Selection.Set(ViewModel.Document.Entities.Where(x=>x.IsVisible&&!x.IsLocked).Select(x=>x.Id));ViewModel.SelectionChanged();Canvas.InvalidateVisual();}
     private void Undo_Click(object? s, RoutedEventArgs e) { ViewModel.Undo(); Canvas.InvalidateVisual(); }
     private void Redo_Click(object? s, RoutedEventArgs e) { ViewModel.Redo(); Canvas.InvalidateVisual(); }
@@ -315,7 +315,7 @@ public partial class MainWindow : Window
         else if (command && e.Key == Key.C) { ViewModel.CopySelection(); e.Handled = true; }
         else if (command && e.Key == Key.V) { ViewModel.Paste(); Canvas.InvalidateVisual(); e.Handled = true; }
         else if (command && e.Key == Key.D) { ViewModel.DuplicateSelection(); Canvas.InvalidateVisual(); e.Handled = true; }
-        else if (e.Key is Key.Delete or Key.Back) { ViewModel.DeleteSelection(); Canvas.InvalidateVisual(); e.Handled = true; }
+        else if (e.Key is Key.Delete or Key.Back) { Delete_Click(null,new RoutedEventArgs()); e.Handled = true; }
         else if (command && e.Key == Key.Z && e.KeyModifiers.HasFlag(KeyModifiers.Shift)) { ViewModel.Redo(); Canvas.InvalidateVisual(); e.Handled = true; }
         else if (command && e.Key == Key.Z) { ViewModel.Undo(); Canvas.InvalidateVisual(); e.Handled = true; }
         else if (command && e.Key == Key.Y) { ViewModel.Redo(); Canvas.InvalidateVisual(); e.Handled = true; }

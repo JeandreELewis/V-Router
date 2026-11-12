@@ -54,6 +54,30 @@ public sealed class CommandHelpHeadlessTests
     }
 
     [AvaloniaFact]
+    public void EditingKeyboardShortcutsCopyPasteDuplicateDeleteUndoAndRedo()
+    {
+        var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent());vm.CreateJob(new JobSettings{Name="Shortcuts",WidthMm=100,HeightMm=100,ThicknessMm=18});var source=new VectorPathEntity{LayerId=vm.Document.ActiveLayerId,Figures=[new(){Start=new(10,10),Segments=[new CubicPathSegment(new(20,30),new(30,-10),new(40,10))]}]};vm.Document.Entities.Add(source);vm.Selection.Set(source.Id);vm.SelectionChanged();var window=new MainWindow{DataContext=vm,Width=1100,Height=700};window.Show();Dispatcher.UIThread.RunJobs();
+        try
+        {
+            Press(Key.C,KeyModifiers.Control);Assert.True(vm.HasClipboard);Assert.Single(vm.Document.Entities);Press(Key.V,KeyModifiers.Control);Assert.Equal(2,vm.Document.Entities.Count);var pasted=Assert.IsType<VectorPathEntity>(vm.Document.Entities[1]);Assert.IsType<CubicPathSegment>(pasted.Figures[0].Segments[0]);Press(Key.D,KeyModifiers.Control);Assert.Equal(3,vm.Document.Entities.Count);Press(Key.Delete);Assert.Equal(2,vm.Document.Entities.Count);Press(Key.Z,KeyModifiers.Control);Assert.Equal(3,vm.Document.Entities.Count);Press(Key.Z,KeyModifiers.Control|KeyModifiers.Shift);Assert.Equal(2,vm.Document.Entities.Count);
+            var locked=vm.Document.Entities[0];locked.IsLocked=true;vm.Selection.Set(locked.Id);vm.SelectionChanged();Press(Key.Delete);Assert.Contains(locked,vm.Document.Entities);Assert.Contains("Locked",vm.Message,StringComparison.OrdinalIgnoreCase);
+            void Press(Key key,KeyModifiers modifiers=KeyModifiers.None){window.RaiseEvent(new KeyEventArgs{RoutedEvent=InputElement.KeyDownEvent,Key=key,KeyModifiers=modifiers});Dispatcher.UIThread.RunJobs();}
+        }
+        finally{window.Close();}
+    }
+
+    [AvaloniaFact]
+    public void ClickingOneGroupedVectorSelectsTheEntireEditableGroup()
+    {
+        var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent());vm.CreateJob(new JobSettings{Name="Groups",WidthMm=100,HeightMm=100,ThicknessMm=18});var group=Guid.NewGuid();var first=new LineEntity{LayerId=vm.Document.ActiveLayerId,GroupId=group,Start=new(10,25),End=new(70,25)};var second=new LineEntity{LayerId=vm.Document.ActiveLayerId,GroupId=group,Start=new(10,50),End=new(70,50)};vm.Document.Entities.AddRange([first,second]);vm.Selection.Clear();vm.SelectionChanged();var window=new MainWindow{DataContext=vm,Width=1100,Height=700};window.Show();Dispatcher.UIThread.RunJobs();
+        try
+        {
+            var canvas=window.FindControl<CadCanvas>("Canvas");Assert.NotNull(canvas);canvas.SetTool(CanvasTool.Select);canvas.ZoomToFit();Dispatcher.UIThread.RunJobs();var zoom=Math.Max(.05,Math.Min((canvas.Bounds.Width-80)/100,(canvas.Bounds.Height-80)/100));var panX=(canvas.Bounds.Width-100*zoom)/2;var panY=(canvas.Bounds.Height-100*zoom)/2;var local=new Point(panX+40*zoom,canvas.Bounds.Height-panY-25*zoom);var screen=canvas.TranslatePoint(local,window);Assert.NotNull(screen);window.MouseDown(screen.Value,MouseButton.Left,RawInputModifiers.None);Dispatcher.UIThread.RunJobs();window.MouseUp(screen.Value,MouseButton.Left,RawInputModifiers.None);Dispatcher.UIThread.RunJobs();Assert.Equal(2,vm.Selection.Count);Assert.Contains(first.Id,vm.Selection.Ids);Assert.Contains(second.Id,vm.Selection.Ids);
+        }
+        finally{window.Close();}
+    }
+
+    [AvaloniaFact]
     public void ThreeDimensionalViewport_ExposesAndExecutesAppearanceSwitch()
     {
         var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent());vm.CreateJob(new JobSettings{Name="Wood preview",WidthMm=1000,HeightMm=2300,ThicknessMm=50});
