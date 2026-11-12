@@ -63,7 +63,7 @@ public sealed class MoveEntitiesCommand : IUndoableCommand, IEntityAffectingComm
     private readonly HashSet<Guid> _ids;
     private readonly List<CadEntity> _entities;
     private readonly CncCad.Core.Geometry.Vector2D _delta;
-    public MoveEntitiesCommand(CadDocument document, IEnumerable<Guid> ids, CncCad.Core.Geometry.Vector2D delta) { _ids = ids.ToHashSet(); _entities = document.Entities.Where(entity => _ids.Contains(entity.Id)).ToList(); _delta = delta; }
+    public MoveEntitiesCommand(CadDocument document, IEnumerable<Guid> ids, CncCad.Core.Geometry.Vector2D delta) { CncCad.Core.Geometry.GeometryValidation.RequireFinite(delta,nameof(delta));_ids = ids.ToHashSet(); _entities = document.Entities.Where(entity => _ids.Contains(entity.Id)).ToList(); _delta = delta; }
     public IReadOnlyCollection<Guid> AffectedEntityIds => _ids;
     public string Description => "Move entities";
     public void Execute() { foreach (var entity in _entities) EntityGeometry.Translate(entity, _delta); }
@@ -77,7 +77,7 @@ public sealed class TransformEntitiesCommand : IUndoableCommand, IEntityAffectin
     private readonly CncCad.Core.Geometry.Matrix2D _worldTransform;
     public TransformEntitiesCommand(CadDocument document, IEnumerable<Guid> ids, CncCad.Core.Geometry.Matrix2D worldTransform, string description)
     {
-        var selected=ids.ToHashSet(); _entities=document.Entities.Where(e=>selected.Contains(e.Id)).ToList(); _before=_entities.ToDictionary(e=>e.Id,e=>e.Transform); _worldTransform=worldTransform; Description=description;
+        CncCad.Core.Geometry.GeometryValidation.RequireInvertible(worldTransform,nameof(worldTransform));var selected=ids.ToHashSet(); _entities=document.Entities.Where(e=>selected.Contains(e.Id)).ToList(); _before=_entities.ToDictionary(e=>e.Id,e=>e.Transform); _worldTransform=worldTransform; Description=description;
     }
     public string Description { get; }
     public IReadOnlyCollection<Guid> AffectedEntityIds => _entities.Select(e=>e.Id).ToArray();
@@ -88,7 +88,7 @@ public sealed class TransformEntitiesCommand : IUndoableCommand, IEntityAffectin
 public sealed class MoveEntitiesIndividuallyCommand : IUndoableCommand, IEntityAffectingCommand
 {
     private readonly Dictionary<CadEntity,CncCad.Core.Geometry.Vector2D> _moves;
-    public MoveEntitiesIndividuallyCommand(IEnumerable<(CadEntity Entity,CncCad.Core.Geometry.Vector2D Delta)> moves,string description){_moves=moves.ToDictionary(x=>x.Entity,x=>x.Delta);Description=description;}
+    public MoveEntitiesIndividuallyCommand(IEnumerable<(CadEntity Entity,CncCad.Core.Geometry.Vector2D Delta)> moves,string description){var values=moves.ToArray();foreach(var value in values)CncCad.Core.Geometry.GeometryValidation.RequireFinite(value.Delta,nameof(moves));_moves=values.ToDictionary(x=>x.Entity,x=>x.Delta);Description=description;}
     public string Description { get; }
     public IReadOnlyCollection<Guid> AffectedEntityIds=>_moves.Keys.Select(e=>e.Id).ToArray();
     public void Execute(){foreach(var pair in _moves)EntityGeometry.Translate(pair.Key,pair.Value);}

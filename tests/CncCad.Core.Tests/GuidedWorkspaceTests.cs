@@ -41,6 +41,27 @@ public class GuidedWorkspaceTests
         vm.Undo(); Assert.Equal(new Point2D(0,0), rectangle.Origin);
     }
 
+    [Fact] public void WorldTransformsRejectUnsafeNumericsPreserveNativeGeometryAndInvalidateCam()
+    {
+        var vm=ViewModel();vm.CreateJob(new JobSettings{WidthMm=200,HeightMm=150,ThicknessMm=18});var rectangle=new RectangleEntity{LayerId=vm.Document.ActiveLayerId,Origin=new(10,20),Width=40,Height=20};vm.Document.Entities.Add(rectangle);vm.Selection.Set(rectangle.Id);vm.SelectionChanged();var operation=vm.CreateProfileDraft();vm.AddOperation(operation);Assert.Equal(OperationStatus.Current,operation.Status);Assert.False(vm.CanUndo);
+        vm.PivotX=30;vm.PivotY=30;vm.TransformAngle=0;vm.RotateSelection();Assert.False(vm.CanUndo);Assert.Equal(OperationStatus.Current,operation.Status);
+        vm.TransformAngle=double.NaN;Assert.Throws<InvalidOperationException>(vm.RotateSelection);Assert.False(vm.CanUndo);Assert.Equal(Matrix2D.Identity,rectangle.Transform);
+        vm.TransformAngle=90;vm.RotateSelection();Assert.True(vm.CanUndo);Assert.IsType<RectangleEntity>(rectangle);AssertBounds(new(20,10,40,50),rectangle.GetBounds());Assert.Equal(OperationStatus.Stale,operation.Status);vm.Undo();AssertBounds(new(10,20,50,40),rectangle.GetBounds());
+        vm.Selection.Set(rectangle.Id);vm.SelectionChanged();vm.PivotX=30;vm.PivotY=30;vm.ScaleX=2;vm.ScaleY=.5;vm.ScaleSelection();AssertBounds(new(-10,25,70,35),rectangle.GetBounds());vm.Undo();
+        vm.Selection.Set(rectangle.Id);vm.SelectionChanged();vm.PivotX=30;vm.PivotY=30;vm.MirrorSelection(true);Assert.Equal(new Point2D(50,20),EntityGeometry.WorldPoints(rectangle)[0]);vm.Undo();vm.Selection.Set(rectangle.Id);vm.SelectionChanged();vm.MirrorSelection(false);Assert.Equal(new Point2D(10,40),EntityGeometry.WorldPoints(rectangle)[0]);vm.Undo();
+        vm.Selection.Set(rectangle.Id);vm.SelectionChanged();vm.SelectionX=60;vm.SelectionY=70;vm.ApplySelectionPosition();AssertBounds(new(60,70,100,90),rectangle.GetBounds());vm.Undo();AssertBounds(new(10,20,50,40),rectangle.GetBounds());
+        vm.Selection.Set(rectangle.Id);vm.SelectionChanged();vm.SelectionX=double.PositiveInfinity;Assert.Throws<InvalidOperationException>(vm.ApplySelectionPosition);AssertBounds(new(10,20,50,40),rectangle.GetBounds());
+        static void AssertBounds(BoundingBox expected,BoundingBox actual){Assert.Equal(expected.MinX,actual.MinX,8);Assert.Equal(expected.MinY,actual.MinY,8);Assert.Equal(expected.MaxX,actual.MaxX,8);Assert.Equal(expected.MaxY,actual.MaxY,8);}
+    }
+
+    [Fact] public void AlignAndDistributeUseDeterministicEqualGapsAndDoNotRecordNoOps()
+    {
+        var vm=ViewModel();vm.CreateJob(new JobSettings{WidthMm=200,HeightMm=100});var first=new RectangleEntity{LayerId=vm.Document.ActiveLayerId,Origin=new(0,5),Width=10,Height=10};var middle=new RectangleEntity{LayerId=vm.Document.ActiveLayerId,Origin=new(20,20),Width=30,Height=15};var last=new RectangleEntity{LayerId=vm.Document.ActiveLayerId,Origin=new(100,40),Width=20,Height=20};vm.Document.Entities.AddRange([middle,last,first]);vm.Selection.Set([last.Id,first.Id,middle.Id]);vm.SelectionChanged();Assert.False(vm.CanUndo);
+        vm.DistributeSelection(true);Assert.Equal(40,middle.Origin.X,8);Assert.Equal(30,middle.GetBounds().MinX-first.GetBounds().MaxX,8);Assert.Equal(30,last.GetBounds().MinX-middle.GetBounds().MaxX,8);vm.Undo();Assert.Equal(20,middle.Origin.X,8);
+        vm.Selection.Set([last.Id,first.Id,middle.Id]);vm.SelectionChanged();vm.AlignSelection("Right");Assert.Equal(120,first.GetBounds().MaxX,8);Assert.Equal(120,middle.GetBounds().MaxX,8);Assert.Equal(120,last.GetBounds().MaxX,8);vm.Undo();
+        vm.Selection.Set([last.Id,first.Id,middle.Id]);vm.SelectionChanged();Assert.Throws<InvalidOperationException>(()=>vm.AlignSelection("Diagonal"));Assert.False(vm.CanUndo);
+    }
+
     [Fact] public void JoinChainsBothEndsInAnySelectionOrderAndIsUndoable()
     {
         var vm=ViewModel();vm.CreateJob(new JobSettings());var group=Guid.NewGuid();var middle=new LineEntity{LayerId=vm.Document.ActiveLayerId,Start=new(10,0),End=new(20,0),GroupId=group,StrokeColor="#FF0000"};var tail=new LineEntity{LayerId=vm.Document.ActiveLayerId,Start=new(20,0),End=new(30,0)};var head=new LineEntity{LayerId=vm.Document.ActiveLayerId,Start=new(0,0),End=new(10,0)};vm.AddEntity(middle);vm.AddEntity(tail);vm.AddEntity(head);vm.Selection.Set([middle.Id,tail.Id,head.Id]);vm.SelectionChanged();vm.JoinSelection();

@@ -26,6 +26,17 @@ public sealed class PrecisionCadTests
     }
 
     [Fact]
+    public void MoveAndTransformCommandsRejectNonFiniteOrCollapsedMatricesBeforeMutation()
+    {
+        var document=new CadDocument();var line=new LineEntity{Start=new(0,0),End=new(10,0)};document.Entities.Add(line);var before=line.Transform;
+        Assert.Throws<ArgumentException>(()=>new MoveEntitiesCommand(document,[line.Id],new(double.NaN,0)));
+        Assert.Throws<ArgumentException>(()=>new TransformEntitiesCommand(document,[line.Id],Matrix2D.Scale(0,1),"Invalid"));
+        Assert.Throws<ArgumentException>(()=>new TransformEntitiesCommand(document,[line.Id],Matrix2D.Translation(double.PositiveInfinity,0),"Invalid"));
+        Assert.Throws<ArgumentException>(()=>new MoveEntitiesIndividuallyCommand([(line,new Vector2D(0,double.NaN))],"Invalid"));
+        Assert.Equal(before,line.Transform);Assert.Equal(new Point2D(0,0),line.Start);Assert.Equal(new Point2D(10,0),line.End);
+    }
+
+    [Fact]
     public void Node_Commands_Preserve_Entity_Id_And_Undo_Topology()
     {
         var polyline=new PolylineEntity{Points=[new(0,0),new(10,0),new(10,10)],IsClosed=true};var id=polyline.Id;var history=new CommandHistory();
