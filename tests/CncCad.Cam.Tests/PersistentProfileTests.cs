@@ -89,6 +89,67 @@ public class PersistentProfileTests
         Assert.True(result.Success); Assert.True(result.Toolpath!.Moves.OfType<LinearMove>().Count() > 30);
     }
 
+    [Fact]
+    public void TransformedRectanglePreservesWorldCompensationAndRequestedDirection()
+    {
+        var rectangle=new RectangleEntity{Width=40,Height=20,Transform=Matrix2D.Then(Matrix2D.Scale(-1.5,2),Matrix2D.Then(Matrix2D.Rotation(31),Matrix2D.Translation(80,45)))};
+        var operation=Operation(rectangle,ProfileSide.Outside);operation.CutDepthMm=1;operation.PassDepthMm=1;
+        var result=Calculate(operation,rectangle);
+        Assert.True(result.Success,string.Join("; ",result.Errors.Select(error=>error.Message)));
+        var source=rectangle.Corners.Select(rectangle.Transform.Transform).ToArray();
+        var route=FirstCutRoute(result.Toolpath!,operation.FeedRateMmPerMin);
+        Assert.True(route.Count>=4);
+        foreach(var point in route)
+        {
+            var distance=Enumerable.Range(0,source.Length).Min(index=>DistanceToLine(point,source[index],source[(index+1)%source.Length]));
+            Assert.Equal(operation.Tool.DiameterMm/2,distance,5);
+        }
+        Assert.True(SignedArea(route)<0,"Outside climb profiling must remain clockwise after reflection and rotation.");
+    }
+
+    [Fact]
+    public void TransformedCurvesKeepTheWorldFlatteningToleranceAndRemainDeterministic()
+    {
+        var transform=Matrix2D.Then(Matrix2D.Scale(100,100),Matrix2D.Then(Matrix2D.Rotation(17),Matrix2D.Translation(250,140)));
+        var circle=new CircleEntity{Radius=1,Transform=transform};
+        var arcPath=new VectorPathEntity{Transform=transform,Figures=[new(){Start=new(1,0),IsClosed=true,Segments=[new ArcPathSegment(new(0,0),180,new(-1,0)),new ArcPathSegment(new(0,0),180,new(1,0))]}]};
+        foreach(var entity in new CadEntity[]{circle,arcPath})
+        foreach(var side in new[]{ProfileSide.Outside,ProfileSide.Inside,ProfileSide.OnVector})
+        {
+            var operation=Operation(entity,side);operation.CutDepthMm=1;operation.PassDepthMm=1;
+            var first=Calculate(operation,entity);var second=Calculate(operation,entity);
+            Assert.True(first.Success,string.Join("; ",first.Errors.Select(error=>error.Message)));
+            Assert.Equal(first.Toolpath!.Moves,second.Toolpath!.Moves);
+            var route=FirstCutRoute(first.Toolpath,operation.FeedRateMmPerMin);
+            var center=transform.Transform(new(0,0));
+            var expectedRadius=100+(side==ProfileSide.Outside?3:side==ProfileSide.Inside?-3:0);
+            Assert.All(route,point=>Assert.InRange(point.DistanceTo(center),expectedRadius-.021,expectedRadius+.021));
+            Assert.Equal(side==ProfileSide.Inside,SignedArea(route)>0);
+            if(side!=ProfileSide.OnVector)continue;
+            for(var index=0;index+1<route.Count;index++)
+            {
+                var midpoint=new Point2D((route[index].X+route[index+1].X)/2,(route[index].Y+route[index+1].Y)/2);
+                Assert.InRange(100-midpoint.DistanceTo(center),0,.020001);
+            }
+        }
+    }
+
+    [Fact]
+    public void TransformedPolylineSupportsEveryCompensationSideWithFiniteDeterministicMotion()
+    {
+        var polygon=new PolylineEntity{IsClosed=true,Points=[new(0,0),new(50,0),new(62,28),new(35,55),new(0,40)],Transform=Matrix2D.Then(Matrix2D.Scale(-1.4,.8),Matrix2D.Then(Matrix2D.Rotation(-23),Matrix2D.Translation(170,95)))};
+        foreach(var side in new[]{ProfileSide.Outside,ProfileSide.Inside,ProfileSide.OnVector})
+        {
+            var operation=Operation(polygon,side);operation.CutDepthMm=1;operation.PassDepthMm=1;
+            var first=Calculate(operation,polygon);var second=Calculate(operation,polygon);
+            Assert.True(first.Success,string.Join("; ",first.Errors.Select(error=>error.Message)));
+            Assert.Equal(first.Toolpath!.Moves,second.Toolpath!.Moves);
+            var route=FirstCutRoute(first.Toolpath,operation.FeedRateMmPerMin);
+            Assert.All(route,point=>{Assert.True(double.IsFinite(point.X));Assert.True(double.IsFinite(point.Y));});
+            Assert.Equal(side==ProfileSide.Inside,SignedArea(route)>0);
+        }
+    }
+
     [Fact] public void FinalPass_IsExact_WhenStepDoesNotDivideDepth()
     {
         var rectangle = new RectangleEntity { Width = 100, Height = 100 }; var result = Calculate(Operation(rectangle), rectangle);
@@ -124,5 +185,21 @@ public class PersistentProfileTests
         var id = Guid.NewGuid(); var operation = new ProfileOperationDefinition { GeometryIds = [id], Status = OperationStatus.Current }; var job = new CamJob { Operations = [operation] };
         job.MarkGeometryChanged([id]); Assert.Equal(OperationStatus.Stale, operation.Status);
         job.MarkGeometryChanged([id], true); Assert.Equal(OperationStatus.Invalid, operation.Status); Assert.NotNull(operation.Error);
+    }
+
+    private static IReadOnlyList<Point2D> FirstCutRoute(ToolpathOperation toolpath,double feed)
+    {
+        var moves=toolpath.Moves;var rapidIndex=moves.FindIndex(move=>move is RapidMove);var rapid=Assert.IsType<RapidMove>(moves[rapidIndex]);var route=new List<Point2D>{rapid.End};
+        for(var index=rapidIndex+1;index<moves.Count&&moves[index] is not RapidMove;index++)
+            if(moves[index] is LinearMove linear&&Math.Abs(linear.FeedRate-feed)<1e-9)route.Add(linear.End);
+        return route;
+    }
+    private static double DistanceToLine(Point2D point,Point2D start,Point2D end)
+    {
+        var segment=end-start;if(segment.Length<=1e-12)return point.DistanceTo(start);return Math.Abs(segment.X*(start.Y-point.Y)-(start.X-point.X)*segment.Y)/segment.Length;
+    }
+    private static double SignedArea(IReadOnlyList<Point2D> points)
+    {
+        var area=0d;for(var index=0;index<points.Count;index++){var next=points[(index+1)%points.Count];area+=points[index].X*next.Y-next.X*points[index].Y;}return area/2;
     }
 }

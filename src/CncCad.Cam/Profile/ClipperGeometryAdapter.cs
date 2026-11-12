@@ -12,8 +12,8 @@ internal static class ClipperGeometryAdapter
     {
         RectangleEntity rectangle => Normalize(rectangle.Corners.Select(rectangle.Transform.Transform)),
         PolylineEntity { IsClosed: true, Points.Count: >= 3 } polyline => Normalize(polyline.Points.Select(polyline.Transform.Transform)),
-        CircleEntity circle when circle.Radius > 0 => Normalize(FlattenCircle(circle)),
-        VectorPathEntity { Figures.Count: 1 } path when path.Figures[0].IsClosed => Normalize(VectorPathGeometry.Flatten(path.Figures,CircleToleranceMm).Select(path.Transform.Transform)),
+        CircleEntity circle when circle.Radius > 0 => Normalize(FlattenCircle(circle, LocalTolerance(circle.Transform))),
+        VectorPathEntity { Figures.Count: 1 } path when path.Figures[0].IsClosed => Normalize(VectorPathGeometry.Flatten(path.Figures,LocalTolerance(path.Transform)).Select(path.Transform.Transform)),
         VectorPathEntity=>throw new ArgumentException("Vector path must contain one closed figure for profiling."),
         PolylineEntity => throw new ArgumentException("Polyline must be closed and contain at least three points."),
         _ => throw new ArgumentException($"{entity.GetType().Name.Replace("Entity", string.Empty)} is not supported by profile operations.")
@@ -95,9 +95,18 @@ internal static class ClipperGeometryAdapter
         var abC = Cross(a, b, c); var abD = Cross(a, b, d); var cdA = Cross(c, d, a); var cdB = Cross(c, d, b);
         return abC * abD < -1e-12 && cdA * cdB < -1e-12;
     }
-    private static IEnumerable<Point2D> FlattenCircle(CircleEntity circle)
+    private static double LocalTolerance(Matrix2D transform)
     {
-        var count = Math.Clamp((int)Math.Ceiling(Math.PI / Math.Acos(Math.Max(-1, 1 - CircleToleranceMm / circle.Radius))), 12, 4096);
+        var trace=transform.M11*transform.M11+transform.M12*transform.M12+transform.M21*transform.M21+transform.M22*transform.M22;
+        var determinant=transform.M11*transform.M22-transform.M12*transform.M21;
+        var discriminant=Math.Max(0,trace*trace-4*determinant*determinant);
+        var maximumScale=Math.Sqrt(Math.Max(0,(trace+Math.Sqrt(discriminant))/2));
+        if(!double.IsFinite(maximumScale)||maximumScale<=1e-12)return CircleToleranceMm;
+        return CircleToleranceMm/maximumScale;
+    }
+    private static IEnumerable<Point2D> FlattenCircle(CircleEntity circle,double localTolerance)
+    {
+        var count = Math.Clamp((int)Math.Ceiling(Math.PI / Math.Acos(Math.Max(-1, 1 - localTolerance / circle.Radius))), 12, 16384);
         for (var i = 0; i < count; i++) { var angle = i * Math.PI * 2 / count; yield return circle.Transform.Transform(new(circle.Center.X + circle.Radius * Math.Cos(angle), circle.Center.Y + circle.Radius * Math.Sin(angle))); }
     }
 }
