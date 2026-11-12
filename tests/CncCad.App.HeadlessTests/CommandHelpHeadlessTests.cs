@@ -167,6 +167,18 @@ public sealed class CommandHelpHeadlessTests
     }
 
     [AvaloniaFact]
+    public void PointerSelectedPartCanBeOptimizedAcceptedAndUndoneAtMinimumSize()
+    {
+        var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent());vm.CreateJob(new JobSettings{Name="Nest workflow",WidthMm=100,HeightMm=100,ThicknessMm=18});var source=new RectangleEntity{LayerId=vm.Document.ActiveLayerId,Origin=new(10,10),Width=20,Height=15};vm.Document.Entities.Add(source);vm.NestQuantity=2;vm.NestSpacing=4;vm.NestEdgeMargin=5;var window=new MainWindow{DataContext=vm,Width=1100,Height=700};window.Show();Dispatcher.UIThread.RunJobs();
+        try
+        {
+            var canvas=window.FindControl<CadCanvas>("Canvas");Assert.NotNull(canvas);canvas.SetTool(CanvasTool.Select);canvas.ZoomToFit();Dispatcher.UIThread.RunJobs();var zoom=Math.Max(.05,Math.Min((canvas.Bounds.Width-80)/100,(canvas.Bounds.Height-80)/100));var panX=(canvas.Bounds.Width-100*zoom)/2;var panY=(canvas.Bounds.Height-100*zoom)/2;var local=new Point(panX+10*zoom,canvas.Bounds.Height-panY-17.5*zoom);var screen=canvas.TranslatePoint(local,window);Assert.NotNull(screen);window.MouseDown(screen.Value,MouseButton.Left,RawInputModifiers.None);Dispatcher.UIThread.RunJobs();window.MouseUp(screen.Value,MouseButton.Left,RawInputModifiers.None);Dispatcher.UIThread.RunJobs();Assert.Equal(source.Id,vm.Selection.PrimaryId);
+            vm.OpenDesignTask(DesignTaskPage.Nesting);Dispatcher.UIThread.RunJobs();Button Visible(string label)=>window.GetVisualDescendants().OfType<Button>().Single(control=>control.IsVisible&&Equals(control.Content,label));Visible("Add Selected Parts").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();Assert.Equal(2,Assert.Single(vm.NestParts).Quantity);Visible("Optimize").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();var accept=Visible("Accept");Assert.True(accept.IsEnabled);accept.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();Assert.Equal(2,vm.Document.Entities.Count(entity=>entity.MaterialSheetId is not null));Assert.Equal(CncCad.Cam.Nesting.NestingLayoutStatus.Current,vm.NestingJob.Status);vm.Undo();Assert.DoesNotContain(vm.Document.Entities,entity=>entity.MaterialSheetId is not null);
+        }
+        finally{window.Close();}
+    }
+
+    [AvaloniaFact]
     public void ExactPolylineCancelIsVisibleAtMinimumSizeAndDoesNotCreateHistoryOrGeometry()
     {
         var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent());vm.CreateJob(new JobSettings{Name="Exact polyline",WidthMm=100,HeightMm=100,ThicknessMm=18});vm.ActivePaletteItem=vm.CreationTools.Single(item=>item.Tool==CanvasTool.Polyline);vm.OpenDesignTask(DesignTaskPage.Construction);vm.Point1X=1;vm.Point1Y=2;vm.Point2X=10;vm.Point2Y=2;vm.AddNumericPolylineNode();var window=new MainWindow{DataContext=vm,Width=1100,Height=700};window.Show();Dispatcher.UIThread.RunJobs();

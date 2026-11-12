@@ -100,7 +100,7 @@ All six public operation calculators apply the shared finite-number policy at th
 | Tool/material/machine/preset libraries | Verified | Searchable CRUD for all four library types; every tool-assembly and machine-safety dimension is exposed; matching presets seed immutable operation snapshots; complete JSON and per-type lossless CSV import/export reject dangling references and unsafe deletion | Service, ViewModel and minimum-size headless UI fixtures pass |
 | SQLite library storage | Verified | Database-backed persistence with explicit ordered schema versions | Legacy missing-column migration is covered by a real SQLite fixture |
 | Machine and fixtures | Verified | UI exposes travel, rapid/tool-change timing, spindle, holder, spoilboard, park and complete fixture bounds/clearance; finite validation feeds safety | Physical values remain the operator's responsibility |
-| Nesting | Incomplete | Enforces quantity, spacing, margins, finite dimensions, grain, permitted rotation, all-parts-placed, deterministic replacement and undo/redo restoration | Pointer-driven workflow coverage remains |
+| Nesting | Verified | Enforces quantity, spacing, margins, finite dimensions, grain, permitted rotation, all-parts-placed, deterministic replacement and undo/redo restoration | Engine fixtures plus minimum-size pointer-select → define → optimize → accept → undo workflow pass |
 
 ## Release blockers
 
