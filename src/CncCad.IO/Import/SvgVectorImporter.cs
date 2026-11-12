@@ -13,14 +13,15 @@ public sealed class SvgVectorImporter:IVectorImportService
     public bool CanImport(string extension)=>extension.Equals(".svg",StringComparison.OrdinalIgnoreCase);
     public VectorImportResult Import(VectorImportRequest request)
     {
+        ValidateRequest(request);
         var xml=XDocument.Load(request.Content,LoadOptions.SetLineInfo);var root=xml.Root??throw new InvalidDataException("SVG root is missing.");var warnings=new List<ImportWarning>();var approximations=new List<ImportWarning>();var unsupported=new HashSet<string>();var unsupportedDetails=new List<UnsupportedImportElement>();var entities=new List<CadEntity>();var layers=new List<CadLayer>();var defaultLayer=Layer(Path.GetFileNameWithoutExtension(request.FileName)+" Import");layers.Add(defaultLayer);
         var unit=DetectUnit((string?)root.Attribute("width"));var unitScale=unit switch{ImportUnit.Inches=>25.4,ImportUnit.Centimetres=>10,ImportUnit.Pixels=>25.4/96,_=>1};var viewBox=Numbers((string?)root.Attribute("viewBox"));var minX=viewBox.Count==4?viewBox[0]:0;var minY=viewBox.Count==4?viewBox[1]:0;var coordinateHeight=viewBox.Count==4?viewBox[3]:NumberValue((string?)root.Attribute("height"));var declaredWidth=NumberValue((string?)root.Attribute("width"));var viewScale=viewBox.Count==4&&viewBox[2]>0&&declaredWidth>0?declaredWidth/viewBox[2]:1;var scale=request.ScaleToMillimetres*unitScale*viewScale;
         Visit(root,defaultLayer.Id,Matrix2D.Identity);var svgToDocument=Matrix2D.Then(Matrix2D.Then(Matrix2D.Translation(-minX,-minY),Matrix2D.Scale(scale,-scale)),Matrix2D.Translation(request.Target.X,request.Target.Y+coordinateHeight*scale));foreach(var e in entities)e.Transform=Matrix2D.Then(e.Transform,svgToDocument);
         return new(entities,layers,entities.Count==0?new(0,0,0,0):BoundingBox.FromPoints(entities.SelectMany(e=>new[]{new Point2D(e.GetBounds().MinX,e.GetBounds().MinY),new Point2D(e.GetBounds().MaxX,e.GetBounds().MaxY)})),unit,warnings,[..unsupported],unsupportedDetails,scale,approximations);
         void Visit(XElement element,Guid layerId,Matrix2D inherited)
         {
-            var display=(string?)element.Attribute("display");if(!request.IncludeHidden&&string.Equals(display,"none",StringComparison.OrdinalIgnoreCase))return;
-            var name=element.Name.LocalName.ToLowerInvariant();var transform=Matrix2D.Then(ParseTransform((string?)element.Attribute("transform")),inherited);
+            var name=element.Name.LocalName.ToLowerInvariant();if(name=="defs")return;var display=(string?)element.Attribute("display");var visibility=(string?)element.Attribute("visibility");var style=(string?)element.Attribute("style");if(!request.IncludeHidden&&(string.Equals(display,"none",StringComparison.OrdinalIgnoreCase)||string.Equals(visibility,"hidden",StringComparison.OrdinalIgnoreCase)||HasHiddenStyle(style)))return;
+            var transform=Matrix2D.Then(ParseTransform((string?)element.Attribute("transform")),inherited);
             if(name=="g"&&request.PreserveLayers){var label=(string?)element.Attributes().FirstOrDefault(a=>a.Name.LocalName is "label" or "id");if(!string.IsNullOrWhiteSpace(label)){var layer=Layer(label);layers.Add(layer);layerId=layer.Id;}}
             CadEntity? entity=name switch
             {
@@ -34,12 +35,20 @@ public sealed class SvgVectorImporter:IVectorImportService
                 "path"=>ParsePath((string?)element.Attribute("d"),warnings,approximations),
                 _=>null
             };
-            if(entity is not null){if(name=="rect"&&(N("rx")>0||N("ry")>0))AddApproximation("svg-rounded-rectangle-cubic","Rounded SVG rectangle corners were represented by cubic Bézier segments.");entity.LayerId=layerId;entity.Transform=transform;entities.Add(entity);}else if(name is not("svg" or "g" or "defs" or "title" or "desc")){unsupported.Add(name);var info=(IXmlLineInfo)element;unsupportedDetails.Add(new(name,info.HasLineInfo()?info.LineNumber:null,info.HasLineInfo()?info.LinePosition:null));}
+            if(entity is not null&&Usable(entity,transform)){if(name=="rect"&&(N("rx")>0||N("ry")>0))AddApproximation("svg-rounded-rectangle-cubic","Rounded SVG rectangle corners were represented by cubic Bézier segments.");entity.LayerId=layerId;entity.Transform=transform;entities.Add(entity);}else if(entity is not null){AddUnsupported(element,name);if(warnings.All(item=>item.Code!="svg-degenerate"))warnings.Add(new("svg-degenerate","Collapsed or non-finite SVG geometry was skipped."));}else if(name is not("svg" or "g" or "title" or "desc"))AddUnsupported(element,name);
             foreach(var child in element.Elements())Visit(child,layerId,transform);
             double N(string attribute)=>double.TryParse((string?)element.Attribute(attribute),NumberStyles.Float,CultureInfo.InvariantCulture,out var v)?v:0;
             Point2D P(string x,string y)=>new(N(x),N(y));
         }
+        void AddUnsupported(XElement element,string name){unsupported.Add(name);var info=(IXmlLineInfo)element;unsupportedDetails.Add(new(name,info.HasLineInfo()?info.LineNumber:null,info.HasLineInfo()?info.LinePosition:null));}
         void AddApproximation(string code,string message){if(approximations.Any(item=>item.Code==code))return;approximations.Add(new(code,message));}
+    }
+    private static void ValidateRequest(VectorImportRequest request){if(string.IsNullOrWhiteSpace(request.FileName))throw new ArgumentException("Import file name is required.",nameof(request));if(!double.IsFinite(request.ScaleToMillimetres)||request.ScaleToMillimetres<=0)throw new ArgumentException("Import scale must be positive and finite.",nameof(request));if(!GeometryValidation.IsFinite(request.Target))throw new ArgumentException("Import placement must contain finite coordinates.",nameof(request));}
+    private static bool HasHiddenStyle(string? style)=>Regex.IsMatch(style??"",@"(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)\s*(?:;|$)",RegexOptions.IgnoreCase);
+    private static bool Usable(CadEntity entity,Matrix2D transform)
+    {
+        if(!GeometryValidation.IsInvertible(transform))return false;return entity switch{LineEntity line=>Finite(line.Start)&&Finite(line.End)&&line.Start.DistanceTo(line.End)>GeometryValidation.CoordinateToleranceMm,PolylineEntity polyline=>polyline.Points.Count>=(polyline.IsClosed?3:2)&&polyline.Points.All(Finite),RectangleEntity rectangle=>Finite(rectangle.Origin)&&double.IsFinite(rectangle.Width)&&double.IsFinite(rectangle.Height)&&rectangle.Width>0&&rectangle.Height>0,CircleEntity circle=>Finite(circle.Center)&&double.IsFinite(circle.Radius)&&circle.Radius>0,EllipseEntity ellipse=>Finite(ellipse.Center)&&double.IsFinite(ellipse.RadiusX)&&double.IsFinite(ellipse.RadiusY)&&ellipse.RadiusX>0&&ellipse.RadiusY>0,VectorPathEntity path=>path.Figures.Count>0&&path.Figures.All(figure=>figure.Segments.Count>0)&&PathFinite(path),_=>false};
+        static bool Finite(Point2D point)=>GeometryValidation.IsFinite(point);static bool PathFinite(VectorPathEntity path){try{return VectorPathGeometry.Flatten(path.Figures,.02).All(Finite);}catch{return false;}}
     }
     private static CadLayer Layer(string name)=>new(){Name=name};
     private static ImportUnit DetectUnit(string? value){var unit=Regex.Match(value??"",@"[a-zA-Z]+\s*$").Value.ToLowerInvariant();return unit switch{"in"=>ImportUnit.Inches,"px"=>ImportUnit.Pixels,"mm"=>ImportUnit.Millimetres,"cm"=>ImportUnit.Centimetres,"pt" or "pc"=>ImportUnit.Pixels,""=>ImportUnit.Unitless,_=>ImportUnit.Pixels};}

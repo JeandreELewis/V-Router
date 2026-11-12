@@ -60,8 +60,8 @@ Status meanings:
 | Outline text | Incomplete | Font style, per-line alignment, multiline layout and vector outlines | Glyph-group transforms and full text-on-path conversion tests remain |
 | Hershey/single-line text | Incomplete | Multiline layout/alignment; missing glyphs produce warning and visible placeholder | Full supported-glyph fixture and path-layout tests remain |
 | Text on path | Incomplete | Position, reverse, flip, fit and upright settings exist | Preserve glyph grouping/transforms through conversion and edits |
-| SVG import | Incomplete | Units/viewBox, nested transforms, closure, smooth curves and supported primitives; curve approximations are explicitly classified | Full units and supported-element fixture set remains |
-| DXF import | Incomplete | Unit conversion, layers/basic entities, native circular bulge arcs, rotated ellipses and nested BLOCK/INSERT transforms; spline approximations are explicit | Native spline/NURBS fidelity and the complete fixture suite remain |
+| SVG import | Incomplete | Units/viewBox, nested transforms, closure, smooth curves and supported primitives; hidden/style-hidden content and unreferenced `<defs>` never become cut geometry; collapsed/non-finite elements are diagnosed and skipped; curve approximations are explicitly classified | Full preserve-aspect-ratio, units and supported-element fixture set remains |
+| DXF import | Incomplete | Unit conversion, optional layer preservation/flattening, basic entities, native circular bulge arcs, rotated ellipses and nested BLOCK/INSERT transforms; collapsed/non-finite entities are diagnosed and skipped; spline approximations are explicit | Native spline/NURBS fidelity and the complete fixture suite remain |
 | Import diagnostics | Verified | Confirmation shows detected units, applied conversion, approximations, warnings, unsupported elements and available source locations before committing | Unsupported content never disappears silently; cancellation leaves the document unchanged |
 
 ## CAM operations

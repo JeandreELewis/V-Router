@@ -84,6 +84,41 @@ public class VectorFoundationTests
     }
 
     [Fact]
+    public void SvgDefinitionsAndHiddenContentDoNotBecomeUnexpectedCutGeometry()
+    {
+        const string svg="""
+        <svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="50mm" viewBox="0 0 100 50">
+          <defs><path id="template" d="M 0 0 L 90 0"/></defs>
+          <g style="display:none"><line x1="0" y1="5" x2="90" y2="5"/></g>
+          <line visibility="hidden" x1="0" y1="10" x2="90" y2="10"/>
+          <line x1="10" y1="20" x2="30" y2="20"/>
+          <use href="#template"/>
+        </svg>
+        """;
+        using var stream=new MemoryStream(Encoding.UTF8.GetBytes(svg));var result=new SvgVectorImporter().Import(new("visibility.svg",stream));var line=Assert.IsType<LineEntity>(Assert.Single(result.Entities));Assert.Equal(20,line.Start.Y);Assert.Contains("use",result.Unsupported);Assert.DoesNotContain("path",result.Unsupported);
+        using var hiddenStream=new MemoryStream(Encoding.UTF8.GetBytes(svg));var withHidden=new SvgVectorImporter().Import(new("visibility.svg",hiddenStream,IncludeHidden:true));Assert.Equal(3,withHidden.Entities.Count);Assert.Contains("use",withHidden.Unsupported);
+    }
+
+    [Fact]
+    public void ImportersRejectUnsafePlacementAndSkipCollapsedGeometryWithDiagnostics()
+    {
+        const string svg="<svg xmlns='http://www.w3.org/2000/svg' width='20mm' height='10mm'><line x1='1' y1='1' x2='1' y2='1'/><circle cx='5' cy='5' r='0'/><line x1='0' y1='0' x2='10' y2='0'/></svg>";
+        using(var stream=new MemoryStream(Encoding.UTF8.GetBytes(svg))){var result=new SvgVectorImporter().Import(new("collapsed.svg",stream));Assert.Single(result.Entities);Assert.Contains(result.Warnings,item=>item.Code=="svg-degenerate");Assert.Equal(2,result.UnsupportedDetails.Count);}
+        using(var stream=new MemoryStream(Encoding.UTF8.GetBytes(svg)))Assert.Throws<ArgumentException>(()=>new SvgVectorImporter().Import(new("bad.svg",stream,double.NaN)));
+        const string dxf="0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nLINE\n8\nCut\n10\n0\n20\n0\n11\n0\n21\n0\n0\nLINE\n8\nCut\n10\n0\n20\n0\n11\n10\n21\n0\n0\nENDSEC\n0\nEOF\n";
+        using(var stream=new MemoryStream(Encoding.ASCII.GetBytes(dxf))){var result=new DxfVectorImporter().Import(new("collapsed.dxf",stream));Assert.Single(result.Entities);Assert.Contains(result.Warnings,item=>item.Code=="dxf-degenerate");Assert.Contains("Line",result.Unsupported);}
+        using(var stream=new MemoryStream(Encoding.ASCII.GetBytes(dxf)))Assert.Throws<ArgumentException>(()=>new DxfVectorImporter().Import(new("bad.dxf",stream,1,new(double.PositiveInfinity,0))));
+    }
+
+    [Fact]
+    public void DxfLayerPreservationCanBeDisabledWithoutLosingGeometry()
+    {
+        const string dxf="0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nLINE\n8\nCut\n10\n0\n20\n0\n11\n10\n21\n0\n0\nLINE\n8\nDrill\n10\n0\n20\n5\n11\n10\n21\n5\n0\nENDSEC\n0\nEOF\n";
+        using var preservedStream=new MemoryStream(Encoding.ASCII.GetBytes(dxf));var preserved=new DxfVectorImporter().Import(new("layers.dxf",preservedStream));Assert.Equal(2,preserved.Layers.Count);Assert.Equal(2,preserved.Entities.Select(entity=>entity.LayerId).Distinct().Count());
+        using var flatStream=new MemoryStream(Encoding.ASCII.GetBytes(dxf));var flat=new DxfVectorImporter().Import(new("layers.dxf",flatStream,PreserveLayers:false));var layer=Assert.Single(flat.Layers);Assert.Equal("layers Import",layer.Name);Assert.Equal(2,flat.Entities.Count);Assert.All(flat.Entities,entity=>Assert.Equal(layer.Id,entity.LayerId));
+    }
+
+    [Fact]
     public void DxfBlocksAndInsertsExpandWithLayerScaleRotationAndTranslation()
     {
         const string dxf="0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n0\nSECTION\n2\nBLOCKS\n0\nBLOCK\n8\n0\n2\nB1\n70\n0\n10\n0\n20\n0\n30\n0\n0\nLINE\n8\n0\n10\n0\n20\n0\n11\n10\n21\n0\n0\nENDBLK\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nINSERT\n8\nCut\n2\nB1\n10\n100\n20\n50\n30\n0\n41\n2\n42\n3\n50\n90\n0\nENDSEC\n0\nEOF\n";using var stream=new MemoryStream(Encoding.ASCII.GetBytes(dxf));var result=new DxfVectorImporter().Import(new("block.dxf",stream));Assert.True(result.Success,string.Join(", ",result.Unsupported));var line=Assert.IsType<LineEntity>(Assert.Single(result.Entities));var points=EntityGeometry.WorldPoints(line);Assert.Equal(100,points[0].X,7);Assert.Equal(50,points[0].Y,7);Assert.Equal(100,points[1].X,7);Assert.Equal(70,points[1].Y,7);Assert.Equal("Cut",Assert.Single(result.Layers).Name);Assert.Empty(result.Unsupported);
