@@ -181,6 +181,37 @@ public class VectorFoundationTests
     }
 
     [Fact]
+    public void RepairPolygonizesClosedSelfIntersectionsIntoStableSimpleContours()
+    {
+        var layer=Guid.NewGuid();var sheet=Guid.NewGuid();var group=Guid.NewGuid();var bowtie=new PolylineEntity{LayerId=layer,MaterialSheetId=sheet,GroupId=group,StrokeColor="#123456",IsClosed=true,Points=[new(0,0),new(20,20),new(0,20),new(20,0)]};var service=new VectorRepairService();var first=service.Analyze([bowtie],new(.001,.001));var second=service.Analyze([bowtie],new(.001,.001));
+        Assert.Contains(first.Issues,issue=>issue.Kind==RepairIssueKind.SelfIntersection&&issue.Message.Contains("2 bounded simple"));Assert.Contains(bowtie.Id,first.RemoveIds);Assert.Equal(2,first.Replacements.Count);Assert.Equal(first.Replacements.Select(entity=>entity.Id),second.Replacements.Select(entity=>entity.Id));Assert.Contains(first.Replacements,entity=>entity.Id==bowtie.Id);Assert.All(first.Replacements,entity=>{var contour=Assert.IsType<PolylineEntity>(entity);Assert.True(contour.IsClosed);Assert.Equal(3,contour.Points.Count);Assert.Equal(layer,contour.LayerId);Assert.Equal(sheet,contour.MaterialSheetId);Assert.Equal(group,contour.GroupId);Assert.Equal("#123456",contour.StrokeColor);Assert.NotEqual(0,Math.Abs(PolygonArea(contour.Points)));});Assert.Equal(4,bowtie.Points.Count);
+    }
+
+    [Fact]
+    public void RepairMergesPartiallyOverlappingSingleSegmentsIntoTheirUnion()
+    {
+        var first=new LineEntity{Start=new(0,0),End=new(10,0),StrokeColor="#ABCDEF"};var second=new PolylineEntity{Points=[new(15,0),new(5,0)]};var analysis=new VectorRepairService().Analyze([first,second],new(.001,.001));var merged=Assert.IsType<PolylineEntity>(Assert.Single(analysis.Replacements));Assert.Equal(first.Id,merged.Id);Assert.Equal(first.StrokeColor,merged.StrokeColor);Assert.Equal([new Point2D(0,0),new Point2D(15,0)],merged.Points);Assert.Contains(first.Id,analysis.RemoveIds);Assert.Contains(second.Id,analysis.RemoveIds);Assert.Contains(analysis.Issues,issue=>issue.Kind==RepairIssueKind.Overlap&&issue.Message.Contains("deterministic span"));
+        var third=new LineEntity{Start=new(14,0),End=new(25,0)};var chain=new VectorRepairService().Analyze([first,second,third],new(.001,.001));var union=Assert.IsType<PolylineEntity>(Assert.Single(chain.Replacements));Assert.Equal([new Point2D(0,0),new Point2D(25,0)],union.Points);Assert.Equal(3,chain.RemoveIds.Count);Assert.DoesNotContain(chain.Issues,issue=>issue.Kind==RepairIssueKind.Overlap&&issue.Message.Contains("ambiguous"));
+    }
+
+    [Fact]
+    public void RepairPolygonizationIsFiniteAndDeterministicAcrossTransformedCrossingsAndDuplicateEdges()
+    {
+        var service=new VectorRepairService();for(var iteration=0;iteration<30;iteration++)
+        {
+            var width=10+iteration*.7;var height=8+iteration*.3;var transform=Matrix2D.Then(Matrix2D.Scale(iteration%2==0?-1.2:1.2,.8),Matrix2D.Then(Matrix2D.Rotation(iteration*11),Matrix2D.Translation(100+iteration,50-iteration)));var crossing=new PolylineEntity{Transform=transform,IsClosed=true,Points=[new(-width,-height),new(width,height),new(-width,height),new(width,-height)]};var first=service.Analyze([crossing],new(.0001,.0001));var second=service.Analyze([crossing],new(.0001,.0001));Assert.Equal(2,first.Replacements.Count);Assert.Equal(first.Replacements.Select(entity=>entity.Id),second.Replacements.Select(entity=>entity.Id));Assert.All(first.Replacements,entity=>{var contour=Assert.IsType<PolylineEntity>(entity);Assert.True(contour.IsClosed);Assert.Equal(3,contour.Points.Count);Assert.All(contour.Points,point=>{Assert.True(double.IsFinite(point.X));Assert.True(double.IsFinite(point.Y));});Assert.True(Math.Abs(PolygonArea(contour.Points))>.001);});
+        }
+        var duplicateEdges=new PolylineEntity{IsClosed=true,Points=[new(0,0),new(10,0),new(10,10),new(0,10),new(0,0),new(10,0),new(20,0),new(20,10),new(10,10),new(10,0)]};var repaired=service.Analyze([duplicateEdges],new(.001,.001));Assert.Contains(repaired.Issues,issue=>issue.Kind==RepairIssueKind.Overlap&&issue.Message.Contains("Removed duplicate overlap"));Assert.Equal(2,repaired.Replacements.Count);Assert.All(repaired.Replacements,entity=>Assert.Equal(100,Math.Abs(PolygonArea(Assert.IsType<PolylineEntity>(entity).Points)),6));
+    }
+
+    [Fact]
+    public void RepairRejectsNonFiniteGeometryAndHonorsDuplicateRemovalOptOut()
+    {
+        var invalid=new PolylineEntity{Points=[new(0,0),new(double.NaN,10)]};var invalidAnalysis=new VectorRepairService().Analyze([invalid],new());Assert.Contains(invalidAnalysis.Issues,issue=>issue.Kind==RepairIssueKind.InvalidGeometry);Assert.Empty(invalidAnalysis.Replacements);Assert.Empty(invalidAnalysis.RemoveIds);Assert.True(double.IsNaN(invalid.Points[1].X));
+        var first=new LineEntity{Start=new(0,0),End=new(10,0)};var duplicate=new LineEntity{Start=new(0,0),End=new(10,0)};var overlap=new LineEntity{Start=new(5,0),End=new(15,0)};var optedOut=new VectorRepairService().Analyze([first,duplicate,overlap],new(RemoveDuplicates:false));Assert.Empty(optedOut.Replacements);Assert.Empty(optedOut.RemoveIds);Assert.Contains(optedOut.Issues,issue=>issue.Kind==RepairIssueKind.DuplicateGeometry);
+    }
+
+    [Fact]
     public void PortableText_RoundTripsItsNativeOutlineGeometry()
     {
         var text=new TextEntity{Text="Router",FontFamily="Inter",SizeMm=12,LetterSpacingMm=.4,Outlines=[new(){Start=new(0,0),IsClosed=true,Segments=[new CubicPathSegment(new(5,0),new(5,10),new(0,10)),new LinePathSegment(new(0,0))]}]};
@@ -247,4 +278,5 @@ public class VectorFoundationTests
     {
         var random=new Random(1729);var service=new VectorTopologyService();for(var iteration=0;iteration<100;iteration++){var angle=(15+random.NextDouble()*150)*Math.PI/180;var firstLength=10+random.NextDouble()*90;var secondLength=10+random.NextDouble()*90;var tangentDistance=Math.Min(firstLength,secondLength)*(.1+random.NextDouble()*.35);var radius=tangentDistance*Math.Tan(angle/2);var source=new PolylineEntity{Points=[new(firstLength,0),new(0,0),new(secondLength*Math.Cos(angle),secondLength*Math.Sin(angle))]};var first=service.Fillet(source,1,radius);var second=service.Fillet(source,1,radius);Assert.True(first.Success);Assert.True(second.Success);var firstPath=Assert.IsType<VectorPathEntity>(Assert.Single(first.Entities));var secondPath=Assert.IsType<VectorPathEntity>(Assert.Single(second.Entities));var firstArc=Assert.IsType<ArcPathSegment>(firstPath.Figures[0].Segments[1]);var secondArc=Assert.IsType<ArcPathSegment>(secondPath.Figures[0].Segments[1]);Assert.Equal(firstArc,secondArc);var start=firstPath.Figures[0].Segments[0].End;Assert.Equal(radius,start.DistanceTo(firstArc.Center),7);Assert.Equal(radius,firstArc.End.DistanceTo(firstArc.Center),7);Assert.All(VectorPathGeometry.Flatten(firstPath.Figures,.005),point=>{Assert.True(double.IsFinite(point.X));Assert.True(double.IsFinite(point.Y));});}
     }
+    private static double PolygonArea(IReadOnlyList<Point2D> points){var area=0d;for(var index=0;index<points.Count;index++){var next=points[(index+1)%points.Count];area+=points[index].X*next.Y-next.X*points[index].Y;}return area/2;}
 }

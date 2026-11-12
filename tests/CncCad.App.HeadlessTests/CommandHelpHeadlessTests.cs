@@ -110,6 +110,17 @@ public sealed class CommandHelpHeadlessTests
     }
 
     [AvaloniaFact]
+    public void RepairTaskPreviewsAndAppliesClosedSelfIntersectionAtMinimumSize()
+    {
+        var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent());vm.CreateJob(new JobSettings{Name="Repair",WidthMm=100,HeightMm=100,ThicknessMm=18});var bowtie=new PolylineEntity{LayerId=vm.Document.ActiveLayerId,IsClosed=true,Points=[new(10,10),new(70,70),new(10,70),new(70,10)]};vm.AddEntity(bowtie);vm.Selection.Set(bowtie.Id);vm.SelectionChanged();vm.RepairTolerance=.001;vm.MinimumSegment=.001;vm.OpenDesignTask(DesignTaskPage.Repair);var window=new MainWindow{DataContext=vm,Width=1100,Height=700};window.Show();Dispatcher.UIThread.RunJobs();
+        try
+        {
+            var analyze=window.GetVisualDescendants().OfType<Button>().Single(control=>control.IsVisible&&Equals(control.Content,"Analyze"));var apply=window.GetVisualDescendants().OfType<Button>().Single(control=>control.IsVisible&&Equals(control.Content,"Apply Safe Repairs"));Assert.False(apply.IsEnabled);analyze.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();Assert.True(apply.IsEnabled);Assert.Contains(vm.RepairIssues,issue=>issue.Kind==RepairIssueKind.SelfIntersection);apply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();Assert.Equal(2,vm.Document.Entities.Count);Assert.All(vm.Document.Entities,entity=>Assert.True(Assert.IsType<PolylineEntity>(entity).IsClosed));
+        }
+        finally{window.Close();}
+    }
+
+    [AvaloniaFact]
     public void ExactPolylineCancelIsVisibleAtMinimumSizeAndDoesNotCreateHistoryOrGeometry()
     {
         var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent());vm.CreateJob(new JobSettings{Name="Exact polyline",WidthMm=100,HeightMm=100,ThicknessMm=18});vm.ActivePaletteItem=vm.CreationTools.Single(item=>item.Tool==CanvasTool.Polyline);vm.OpenDesignTask(DesignTaskPage.Construction);vm.Point1X=1;vm.Point1Y=2;vm.Point2X=10;vm.Point2Y=2;vm.AddNumericPolylineNode();var window=new MainWindow{DataContext=vm,Width=1100,Height=700};window.Show();Dispatcher.UIThread.RunJobs();
