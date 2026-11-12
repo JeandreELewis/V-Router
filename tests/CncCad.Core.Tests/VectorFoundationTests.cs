@@ -197,6 +197,22 @@ public class VectorFoundationTests
     }
 
     [Fact]
+    public void VectorPathInsertionSplitsNativeLineBezierAndArcSegmentsExactly()
+    {
+        var line=new VectorPathEntity{Figures=[new(){Start=new(0,0),Segments=[new LinePathSegment(new(10,0))]}]};var lineEdit=VectorPathNodes.InsertAfter(line,0);var lineFigure=Assert.Single(lineEdit.Figures);Assert.Equal([new Point2D(5,0),new Point2D(10,0)],lineFigure.Segments.Cast<LinePathSegment>().Select(segment=>segment.End));
+        var quadratic=new VectorPathEntity{Figures=[new(){Start=new(0,0),Segments=[new QuadraticPathSegment(new(5,10),new(10,0))]}]};var quadraticEdit=VectorPathNodes.InsertAfter(quadratic,0);var quadraticSegments=Assert.Single(quadraticEdit.Figures).Segments.Cast<QuadraticPathSegment>().ToArray();Assert.Equal(new Point2D(2.5,5),quadraticSegments[0].Control);Assert.Equal(new Point2D(5,5),quadraticSegments[0].End);Assert.Equal(new Point2D(7.5,5),quadraticSegments[1].Control);Assert.Equal(new Point2D(10,0),quadraticSegments[1].End);
+        var cubic=new VectorPathEntity{Figures=[new(){Start=new(0,0),Segments=[new CubicPathSegment(new(0,10),new(10,10),new(10,0))]}]};var cubicEdit=VectorPathNodes.InsertAfter(cubic,0);var cubicSegments=Assert.Single(cubicEdit.Figures).Segments.Cast<CubicPathSegment>().ToArray();Assert.Equal(new Point2D(0,5),cubicSegments[0].Control1);Assert.Equal(new Point2D(2.5,7.5),cubicSegments[0].Control2);Assert.Equal(new Point2D(5,7.5),cubicSegments[0].End);Assert.Equal(new Point2D(7.5,7.5),cubicSegments[1].Control1);Assert.Equal(new Point2D(10,5),cubicSegments[1].Control2);Assert.Equal(new Point2D(10,0),cubicSegments[1].End);
+        var arc=new VectorPathEntity{Figures=[new(){Start=new(10,0),Segments=[new ArcPathSegment(new(0,0),90,new(0,10))]}]};Assert.False(VectorPathNodes.CanMove(arc,0));Assert.True(VectorPathNodes.CanInsertAfter(arc,0));var arcEdit=VectorPathNodes.InsertAfter(arc,0);var arcs=Assert.Single(arcEdit.Figures).Segments.Cast<ArcPathSegment>().ToArray();Assert.Equal(45,arcs[0].SweepAngleDegrees);Assert.Equal(45,arcs[1].SweepAngleDegrees);Assert.Equal(Math.Sqrt(50),arcs[0].End.X,12);Assert.Equal(Math.Sqrt(50),arcs[0].End.Y,12);Assert.Equal(arcs[0].Center,arcs[1].Center);Assert.Equal(new Point2D(0,10),arcs[1].End);
+    }
+
+    [Fact]
+    public void ClosedVectorStartRotationPreservesExactSegmentsAndDeletionPreservesUnaffectedCurves()
+    {
+        var circle=new VectorPathEntity{Figures=[new(){Start=new(10,0),IsClosed=true,Segments=[new ArcPathSegment(new(0,0),90,new(0,10)),new ArcPathSegment(new(0,0),90,new(-10,0)),new ArcPathSegment(new(0,0),90,new(0,-10)),new ArcPathSegment(new(0,0),90,new(10,0))]}]};var rotated=VectorPathNodes.MakeStart(circle,1);var rotatedFigure=Assert.Single(rotated.Figures);Assert.Equal(new Point2D(0,10),rotatedFigure.Start);Assert.All(rotatedFigure.Segments,segment=>Assert.IsType<ArcPathSegment>(segment));Assert.Equal(new Point2D(0,10),rotatedFigure.Segments[^1].End);Assert.Equal(VectorPathGeometry.Bounds(circle.Figures,Matrix2D.Identity),VectorPathGeometry.Bounds(rotated.Figures,Matrix2D.Identity));
+        var open=new VectorPathEntity{Figures=[new(){Start=new(0,0),Segments=[new LinePathSegment(new(10,0)),new CubicPathSegment(new(15,8),new(25,8),new(30,0)),new LinePathSegment(new(40,0))]}]};var deleted=VectorPathNodes.Delete(open,1);var deletedFigure=Assert.Single(deleted.Figures);var preserved=Assert.IsType<CubicPathSegment>(deletedFigure.Segments[0]);Assert.Equal(new Point2D(15,8),preserved.Control1);Assert.Equal(new Point2D(25,8),preserved.Control2);Assert.Equal(new Point2D(30,0),preserved.End);Assert.IsType<LinePathSegment>(deletedFigure.Segments[1]);
+    }
+
+    [Fact]
     public void TrimAndCornerTools_ReturnNewTopologyAndLeaveSourceUntouched()
     {
         var target=new LineEntity{Start=new(0,5),End=new(30,5)};var cutters=new CadEntity[]{new LineEntity{Start=new(10,0),End=new(10,10)},new LineEntity{Start=new(20,0),End=new(20,10)}};var service=new VectorTopologyService();

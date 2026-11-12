@@ -127,6 +127,13 @@ public sealed class PolylineNodesCommand(PolylineEntity entity,IEnumerable<CncCa
     public void Execute(){entity.Points=[.._after];entity.IsClosed=isClosed;}public void Undo(){entity.Points=[.._before];entity.IsClosed=_beforeClosed;}
 }
 
+public sealed class VectorPathFiguresCommand(VectorPathEntity entity,IEnumerable<VectorPathFigure> figures,string description):IUndoableCommand,IEntityAffectingCommand
+{
+    private readonly List<VectorPathFigure> _before=VectorPathGeometry.Clone(entity.Figures);private readonly List<VectorPathFigure> _after=VectorPathGeometry.Clone(figures);
+    public string Description{get;}=description;public IReadOnlyCollection<Guid>AffectedEntityIds=>[entity.Id];
+    public void Execute()=>entity.Figures=VectorPathGeometry.Clone(_after);public void Undo()=>entity.Figures=VectorPathGeometry.Clone(_before);
+}
+
 public sealed class SetEntityColorCommand:IUndoableCommand,IEntityAffectingCommand
 {
     private readonly CadEntity[] _entities;private readonly Dictionary<Guid,string?> _before;private readonly string? _after;

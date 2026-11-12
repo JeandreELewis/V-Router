@@ -130,6 +130,25 @@ public class GuidedWorkspaceTests
         var vm=ViewModel();vm.CreateJob(new JobSettings());var path=new VectorPathEntity{LayerId=vm.Document.ActiveLayerId,Figures=[new(){Start=new(0,0),Segments=[new CubicPathSegment(new(5,10),new(15,10),new(20,0))]}]};vm.AddEntity(path);vm.SelectNode(path,1,new(5,10));Assert.True(vm.HasActiveNode);Assert.False(vm.CanInsertNode);Assert.False(vm.CanDeleteNode);Assert.False(vm.CanMakeStartNode);vm.NodeX=6;vm.NodeY=12;vm.ApplyNodePosition();Assert.Equal(new Point2D(6,12),Assert.IsType<CubicPathSegment>(path.Figures[0].Segments[0]).Control1);vm.Undo();Assert.Equal(new Point2D(5,10),Assert.IsType<CubicPathSegment>(path.Figures[0].Segments[0]).Control1);
     }
 
+    [Fact] public void OpenPathFinalAnchorTruthfullyDisablesInsertion()
+    {
+        var vm=ViewModel();vm.CreateJob(new JobSettings());var polyline=new PolylineEntity{LayerId=vm.Document.ActiveLayerId,Points=[new(0,0),new(10,0),new(20,0)]};vm.AddEntity(polyline);vm.SelectNode(polyline,2,new(20,0));Assert.False(vm.CanInsertNode);Assert.True(vm.CanDeleteNode);Assert.Throws<InvalidOperationException>(vm.InsertNode);
+        var vector=new VectorPathEntity{LayerId=vm.Document.ActiveLayerId,Figures=[new(){Start=new(0,0),Segments=[new LinePathSegment(new(10,0)),new LinePathSegment(new(20,0))]}]};vm.AddEntity(vector);vm.SelectNode(vector,2,new(20,0));Assert.False(vm.CanInsertNode);Assert.True(vm.CanDeleteNode);Assert.Throws<InvalidOperationException>(vm.InsertNode);
+    }
+
+    [Fact] public void LockedGeometryTruthfullyDisablesEveryNodeMutation()
+    {
+        var vm=ViewModel();vm.CreateJob(new JobSettings());var path=new PolylineEntity{LayerId=vm.Document.ActiveLayerId,IsLocked=true,IsClosed=true,Points=[new(0,0),new(20,0),new(20,20),new(0,20)]};vm.AddEntity(path);vm.SelectNode(path,1,new(20,0));Assert.True(vm.HasActiveNode);Assert.False(vm.CanApplyNodePosition);Assert.False(vm.CanInsertNode);Assert.False(vm.CanDeleteNode);Assert.False(vm.CanMakeStartNode);Assert.Throws<InvalidOperationException>(()=>vm.MoveNode(path,1,new(21,0)));Assert.Equal(new Point2D(20,0),path.Points[1]);
+    }
+
+    [Fact] public void ExactArcVectorNodesSplitRotateDeleteUndoAndInvalidateDependentCam()
+    {
+        var vm=ViewModel();vm.CreateJob(new JobSettings{WidthMm=100,HeightMm=100,ThicknessMm=12});var path=new VectorPathEntity{LayerId=vm.Document.ActiveLayerId,Transform=Matrix2D.Translation(30,30),Figures=[new(){Start=new(10,0),IsClosed=true,Segments=[new ArcPathSegment(new(0,0),90,new(0,10)),new ArcPathSegment(new(0,0),90,new(-10,0)),new ArcPathSegment(new(0,0),90,new(0,-10)),new ArcPathSegment(new(0,0),90,new(10,0))]}]};vm.AddEntity(path);var operation=new ProfileOperationDefinition{GeometryIds=[path.Id],Status=OperationStatus.Current};vm.CamJob.Operations.Add(operation);
+        vm.SelectNode(path,0,path.Transform.Transform(path.Figures[0].Start));Assert.True(vm.CanInsertNode);Assert.True(vm.CanDeleteNode);Assert.False(vm.CanMakeStartNode);vm.InsertNode();Assert.Equal(5,path.Figures[0].Segments.Count);Assert.All(path.Figures[0].Segments.Take(2),segment=>Assert.IsType<ArcPathSegment>(segment));Assert.Equal(OperationStatus.Stale,operation.Status);vm.Undo();Assert.Equal(4,path.Figures[0].Segments.Count);
+        vm.SelectNode(path,1,path.Transform.Transform(path.Figures[0].Segments[0].End));Assert.True(vm.CanMakeStartNode);vm.MakeStartNode();Assert.Equal(new Point2D(0,10),path.Figures[0].Start);Assert.All(path.Figures[0].Segments,segment=>Assert.IsType<ArcPathSegment>(segment));vm.Undo();Assert.Equal(new Point2D(10,0),path.Figures[0].Start);
+        vm.SelectNode(path,1,path.Transform.Transform(path.Figures[0].Segments[0].End));vm.DeleteNode();Assert.Equal(3,path.Figures[0].Segments.Count);Assert.False(vm.HasActiveNode);vm.Undo();Assert.Equal(4,path.Figures[0].Segments.Count);
+    }
+
     [Fact] public void RepairApplyIsEnabledOnlyForCurrentUnambiguousPreviewAndIsUndoable()
     {
         var vm=ViewModel();vm.CreateJob(new JobSettings());var path=new PolylineEntity{LayerId=vm.Document.ActiveLayerId,Points=[new(0,0),new(.001,0),new(10,0)]};vm.AddEntity(path);Assert.False(vm.CanApplyRepair);vm.MinimumSegment=.01;vm.AnalyzeRepair();Assert.True(vm.CanApplyRepair);vm.ApplyRepair();Assert.False(vm.CanApplyRepair);Assert.Equal(2,Assert.IsType<PolylineEntity>(Assert.Single(vm.Document.Entities)).Points.Count);vm.Undo();Assert.Equal(3,Assert.IsType<PolylineEntity>(Assert.Single(vm.Document.Entities)).Points.Count);

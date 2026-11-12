@@ -60,6 +60,7 @@ public sealed class CadCanvas : Control
     private SnapResult _snapResult;
     private CadEntity? _nodeEntity;
     private int _nodeIndex=-1;
+    private bool _nodeCanMove;
     private Point2D? _nodeStartPoint;
     private Point2D? _lastSelectionClick;private int _hitCycleIndex;
     private SelectionDragMode _selectionDragMode;private Point2D _transformPivot;private Point2D _transformStart;private Matrix2D _transformPreview=Matrix2D.Identity;private bool _uniformScale;
@@ -126,7 +127,7 @@ public sealed class CadCanvas : Control
     public void SetTool(CanvasTool tool) { ActiveTool = tool; _trimCandidate=null;_drawingSession.SetTool(tool); Cursor=new Cursor(tool==CanvasTool.Trim?StandardCursorType.Cross:StandardCursorType.Arrow);ReportInteraction(); InvalidateVisual(); }
     public bool HandleDrawingKey(Key key)
     {
-        if(key==Key.Escape&&_nodeEntity is not null){_nodeEntity=null;_nodeIndex=-1;_nodeStartPoint=null;InvalidateVisual();return true;}
+        if(key==Key.Escape&&_nodeEntity is not null){_nodeEntity=null;_nodeIndex=-1;_nodeCanMove=false;_nodeStartPoint=null;InvalidateVisual();return true;}
         var wasActive = _drawingSession.IsActive; var entity = _drawingSession.HandleKey(key, Document.ActiveLayerId);
         if (entity is not null) EntityCreated?.Invoke(entity); ReportInteraction(); InvalidateVisual(); return wasActive;
     }
@@ -315,9 +316,15 @@ public sealed class CadCanvas : Control
         var rect = DocRect(new(Math.Min(a.X,b.X), Math.Min(a.Y,b.Y), Math.Max(a.X,b.X), Math.Max(a.Y,b.Y)));
         context.FillRectangle(new SolidColorBrush(Color.FromArgb(35, 101, 201, 255)), rect); context.DrawRectangle(new Pen(new SolidColorBrush(Color.Parse("#65C9FF")), 1, dashStyle: DashStyle.Dash), rect);
     }
-    private void DrawNodes(DrawingContext context){var anchorBrush=new SolidColorBrush(Color.Parse("#FFD166"));var handleBrush=new SolidColorBrush(Color.Parse("#65C9FF"));var handlePen=new Pen(new SolidColorBrush(Color.FromArgb(150,101,201,255)),1);foreach(var entity in Document.Entities.Where(e=>Selection.Contains(e.Id)&&e is LineEntity or PolylineEntity or VectorPathEntity&&!ContainsExactArc(e))){if(entity is not VectorPathEntity path){foreach(var p in EditableNodes(entity)){var s=Screen(p);context.DrawEllipse(anchorBrush,null,s,5,5);}continue;}foreach(var figure in path.Figures){var current=path.Transform.Transform(figure.Start);var startScreen=Screen(current);context.DrawEllipse(anchorBrush,null,startScreen,5,5);foreach(var segment in figure.Segments){switch(segment){case QuadraticPathSegment q:DrawHandle(path.Transform.Transform(q.Control),current,q.End);break;case CubicPathSegment c:DrawHandle(path.Transform.Transform(c.Control1),current,c.End);DrawHandle(path.Transform.Transform(c.Control2),path.Transform.Transform(c.End),c.End);break;}current=path.Transform.Transform(segment.End);context.DrawEllipse(anchorBrush,null,Screen(current),5,5);}}}void DrawHandle(Point2D control,Point2D anchor,Point2D end){var a=Screen(anchor);var h=Screen(control);context.DrawLine(handlePen,a,h);context.FillRectangle(handleBrush,new(h.X-4,h.Y-4,8,8));}}
-    private static bool ContainsExactArc(CadEntity entity)=>entity is VectorPathEntity path&&path.Figures.SelectMany(figure=>figure.Segments).Any(segment=>segment is ArcPathSegment);
-    private static IEnumerable<Point2D> EditableNodes(CadEntity entity)=>entity switch{LineEntity l=>new[]{l.Transform.Transform(l.Start),l.Transform.Transform(l.End)},PolylineEntity p=>p.Points.Select(p.Transform.Transform),VectorPathEntity path when !ContainsExactArc(path)=>VectorPathNodes.Points(path).Select(path.Transform.Transform),_=>[]};
+    private void DrawNodes(DrawingContext context){var anchorBrush=new SolidColorBrush(Color.Parse("#FFD166"));var handleBrush=new SolidColorBrush(Color.Parse("#65C9FF"));var handlePen=new Pen(new SolidColorBrush(Color.FromArgb(150,101,201,255)),1);foreach(var entity in Document.Entities.Where(e=>Selection.Contains(e.Id)&&NodeEditingAllowed(e)&&(e is LineEntity or PolylineEntity or VectorPathEntity))){if(entity is not VectorPathEntity path){foreach(var node in EditableNodes(entity)){var s=Screen(node.Point);context.DrawEllipse(anchorBrush,null,s,5,5);}continue;}foreach(var figure in path.Figures){var current=path.Transform.Transform(figure.Start);var startScreen=Screen(current);context.DrawEllipse(anchorBrush,null,startScreen,5,5);foreach(var segment in figure.Segments){switch(segment){case QuadraticPathSegment q:DrawHandle(path.Transform.Transform(q.Control),current);break;case CubicPathSegment c:DrawHandle(path.Transform.Transform(c.Control1),current);DrawHandle(path.Transform.Transform(c.Control2),path.Transform.Transform(c.End));break;}current=path.Transform.Transform(segment.End);context.DrawEllipse(anchorBrush,null,Screen(current),5,5);}}}void DrawHandle(Point2D control,Point2D anchor){var a=Screen(anchor);var h=Screen(control);context.DrawLine(handlePen,a,h);context.FillRectangle(handleBrush,new(h.X-4,h.Y-4,8,8));}}
+    private bool NodeEditingAllowed(CadEntity entity)=>!entity.IsLocked&&Document.Layers.FirstOrDefault(layer=>layer.Id==entity.LayerId)?.IsLocked!=true;
+    private static IEnumerable<(int Index,Point2D Point,bool CanMove)> EditableNodes(CadEntity entity)=>entity switch
+    {
+        LineEntity line=>new[]{(0,line.Transform.Transform(line.Start),true),(1,line.Transform.Transform(line.End),true)},
+        PolylineEntity polyline=>polyline.Points.Select((point,index)=>(index,polyline.Transform.Transform(point),true)),
+        VectorPathEntity path=>VectorPathNodes.Describe(path).Select(node=>(node.Index,path.Transform.Transform(node.Point),VectorPathNodes.CanMove(path,node.Index))),
+        _=>[]
+    };
     private void DrawSnap(DrawingContext context)
     {
         if (_snapResult.Type == SnapType.None) return; var p = Screen(_snapResult.Point); var pen = new Pen(new SolidColorBrush(Color.Parse("#71E6A8")), 2);
@@ -403,7 +410,7 @@ public sealed class CadCanvas : Control
         var point = Snapped(Doc(screen));
         if(TabEditMode&&e.GetCurrentPoint(this).Properties.IsLeftButtonPressed){TabPlacementRequested?.Invoke(point);InvalidateVisual();return;}
         if (e.GetCurrentPoint(this).Properties.IsMiddleButtonPressed) { _lastPan = screen; e.Pointer.Capture(this); return; }
-        if(NodeEditMode){var candidates=Document.Entities.Where(x=>Selection.Contains(x.Id)&&x is LineEntity or PolylineEntity or VectorPathEntity).SelectMany(x=>EditableNodes(x).Select((p,i)=>(Entity:x,Index:i,Point:p))).OrderBy(x=>x.Point.DistanceTo(point)).ToArray();if(candidates.FirstOrDefault() is var node&&node.Entity is not null&&node.Point.DistanceTo(point)<=8/_viewport.Zoom){_nodeEntity=node.Entity;_nodeIndex=node.Index;_nodeStartPoint=node.Point;_cursorDocument=node.Point;NodeSelected?.Invoke(node.Entity,node.Index,node.Point);e.Pointer.Capture(this);return;}}
+        if(NodeEditMode){var candidates=Document.Entities.Where(x=>Selection.Contains(x.Id)&&NodeEditingAllowed(x)&&(x is LineEntity or PolylineEntity or VectorPathEntity)).SelectMany(x=>EditableNodes(x).Select(node=>(Entity:x,node.Index,node.Point,node.CanMove))).OrderBy(x=>x.Point.DistanceTo(point)).ToArray();if(candidates.FirstOrDefault() is var node&&node.Entity is not null&&node.Point.DistanceTo(point)<=8/_viewport.Zoom){_nodeEntity=node.Entity;_nodeIndex=node.Index;_nodeCanMove=node.CanMove;_nodeStartPoint=node.Point;_cursorDocument=node.Point;NodeSelected?.Invoke(node.Entity,node.Index,node.Point);e.Pointer.Capture(this);return;}}
         if (ActiveTool == CanvasTool.Select)
         {
             if(TryStartSelectionTransform(screen,e.KeyModifiers)){e.Pointer.Capture(this);InvalidateVisual();return;}
@@ -431,7 +438,7 @@ public sealed class CadCanvas : Control
         if(ToolpathPreviewMode){_lastOrbit=null;_lastPan=null;_previewRefineTimer.Stop();_previewRefineTimer.Start();e.Pointer.Capture(null);return;}
         if(ActiveTool==CanvasTool.Trim){e.Pointer.Capture(null);return;}
         if(_selectionDragMode!=SelectionDragMode.None){var description=_selectionDragMode==SelectionDragMode.Rotate?"Selection rotated":"Selection resized";SelectionTransformed?.Invoke(_transformPreview,description);_selectionDragMode=SelectionDragMode.None;_transformPreview=Matrix2D.Identity;e.Pointer.Capture(null);ReportInteraction();InvalidateVisual();return;}
-        if(NodeEditMode&&_nodeEntity is not null&&_cursorDocument is{} nodePoint){if(_nodeStartPoint is{} nodeStart&&nodeStart.DistanceTo(nodePoint)>1e-7)NodeMoved?.Invoke(_nodeEntity,_nodeIndex,nodePoint);_nodeEntity=null;_nodeIndex=-1;_nodeStartPoint=null;e.Pointer.Capture(null);InvalidateVisual();return;}
+        if(NodeEditMode&&_nodeEntity is not null&&_cursorDocument is{} nodePoint){if(_nodeCanMove&&_nodeStartPoint is{} nodeStart&&nodeStart.DistanceTo(nodePoint)>1e-7)NodeMoved?.Invoke(_nodeEntity,_nodeIndex,nodePoint);_nodeEntity=null;_nodeIndex=-1;_nodeCanMove=false;_nodeStartPoint=null;e.Pointer.Capture(null);InvalidateVisual();return;}
         if (ActiveTool != CanvasTool.Select && _cursorDocument is { } drawingEnd) { var entity = _drawingSession.PointerReleased(drawingEnd, Document.ActiveLayerId); if (entity is not null) EntityCreated?.Invoke(entity); }
         if(_moveStart is { } moveStart&&_moveCurrent is { } moveEnd&&moveStart.DistanceTo(moveEnd)>1e-6){SelectionMoved?.Invoke(moveEnd-moveStart);_selectionStart=null;_selectionEnd=null;}
         if (_selectionStart is { } start && _selectionEnd is { } end)

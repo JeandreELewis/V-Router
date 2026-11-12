@@ -132,6 +132,18 @@ public sealed class CommandHelpHeadlessTests
     }
 
     [AvaloniaFact]
+    public void ExactArcAnchorIsSelectableAndSplittableButCannotBeDraggedOrNumericallyMoved()
+    {
+        var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent());vm.CreateJob(new JobSettings{Name="Arc nodes",WidthMm=100,HeightMm=100,ThicknessMm=18});var path=new VectorPathEntity{LayerId=vm.Document.ActiveLayerId,Figures=[new(){Start=new(70,50),IsClosed=true,Segments=[new ArcPathSegment(new(50,50),90,new(50,70)),new ArcPathSegment(new(50,50),90,new(30,50)),new ArcPathSegment(new(50,50),90,new(50,30)),new ArcPathSegment(new(50,50),90,new(70,50))]}]};vm.AddEntity(path);vm.Selection.Set(path.Id);vm.SelectionChanged();vm.OpenDesignTask(DesignTaskPage.Edit);var window=new MainWindow{DataContext=vm,Width=1100,Height=700};window.Show();Dispatcher.UIThread.RunJobs();
+        try
+        {
+            var canvas=window.FindControl<CadCanvas>("Canvas");Assert.NotNull(canvas);canvas.NodeEditMode=true;canvas.ZoomToFit();Dispatcher.UIThread.RunJobs();var zoom=Math.Max(.05,Math.Min((canvas.Bounds.Width-80)/100,(canvas.Bounds.Height-80)/100));var panX=(canvas.Bounds.Width-100*zoom)/2;var panY=(canvas.Bounds.Height-100*zoom)/2;var local=new Point(panX+70*zoom,canvas.Bounds.Height-panY-50*zoom);var screen=canvas.TranslatePoint(local,window);Assert.NotNull(screen);window.MouseDown(screen.Value,MouseButton.Left,RawInputModifiers.None);Dispatcher.UIThread.RunJobs();window.MouseUp(screen.Value,MouseButton.Left,RawInputModifiers.None);Dispatcher.UIThread.RunJobs();Assert.True(vm.HasActiveNode);Assert.True(vm.CanInsertNode);Assert.True(vm.CanDeleteNode);Assert.False(vm.CanApplyNodePosition);
+            var apply=window.GetVisualDescendants().OfType<Button>().Single(control=>control.IsVisible&&Equals(control.Content,"Apply Node Position"));var insert=window.GetVisualDescendants().OfType<Button>().Single(control=>control.IsVisible&&Equals(control.Content,"Insert"));Assert.False(apply.IsEnabled);Assert.True(insert.IsEnabled);insert.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();Assert.Equal(5,path.Figures[0].Segments.Count);Assert.All(path.Figures[0].Segments.Take(2),segment=>Assert.IsType<ArcPathSegment>(segment));vm.Undo();Assert.Equal(4,path.Figures[0].Segments.Count);
+        }
+        finally{window.Close();}
+    }
+
+    [AvaloniaFact]
     public void VCarvePaletteUnlocksForClosedOutlineAndOpensTheValidatedEditor()
     {
         var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent());vm.CreateJob(new JobSettings{Name="V carve",WidthMm=100,HeightMm=100,ThicknessMm=18});vm.AddEntity(new RectangleEntity{LayerId=vm.Document.ActiveLayerId,Origin=new(10,10),Width=60,Height=40});vm.SelectedTool=new(){Name="60 degree V-bit",Type=ToolType.VBit,DiameterMm=8,VBitAngleDegrees=60,TipDiameterMm=.2,FeedRateMmPerMin=800,PlungeRateMmPerMin=200,SpindleRpm=16000};vm.SetWorkspaceMode(WorkspaceMode.Toolpaths);var window=new MainWindow{DataContext=vm,Width=1100,Height=700};window.Show();Dispatcher.UIThread.RunJobs();
