@@ -288,8 +288,8 @@ public sealed class CadCanvas : Control
         var layerColor=entity.StrokeColor??Document.Layers.FirstOrDefault(x=>x.Id==entity.LayerId)?.Color;var color = preview ? Colors.White : Color.TryParse(layerColor,out var parsed)?parsed:Color.Parse("#65C9FF"); color = Color.FromArgb((byte)(255 * opacity), color.R, color.G, color.B);
         var pen = overridePen??new Pen(new SolidColorBrush(color), preview ? 1 : 1.5, dashStyle: preview ? DashStyle.Dash : null);
         if(entity is DrillPointEntity drill){var p=Screen(drill.Transform.Transform(drill.Position));context.DrawEllipse(null,pen,p,5,5);context.DrawLine(pen,new(p.X-7,p.Y),new(p.X+7,p.Y));context.DrawLine(pen,new(p.X,p.Y-7),new(p.X,p.Y+7));return;}
-        if(entity is VectorPathEntity path){foreach(var figure in path.Figures){var figurePoints=VectorPathGeometry.Flatten([figure],.02).Select(path.Transform.Transform).ToArray();for(var i=1;i<figurePoints.Length;i++)context.DrawLine(pen,Screen(figurePoints[i-1]),Screen(figurePoints[i]));}return;}
-        if(entity is TextEntity text){foreach(var outline in text.Outlines){var outlinePoints=VectorPathGeometry.Flatten([outline],.02).Select(text.Transform.Transform).ToArray();for(var i=1;i<outlinePoints.Length;i++)context.DrawLine(pen,Screen(outlinePoints[i-1]),Screen(outlinePoints[i]));}return;}
+        if(entity is VectorPathEntity path){foreach(var figure in path.Figures){var figurePoints=VectorPathGeometry.Flatten([figure],GeometryTolerancePolicy.DefaultCurveFlatnessMm).Select(path.Transform.Transform).ToArray();for(var i=1;i<figurePoints.Length;i++)context.DrawLine(pen,Screen(figurePoints[i-1]),Screen(figurePoints[i]));}return;}
+        if(entity is TextEntity text){foreach(var outline in text.Outlines){var outlinePoints=VectorPathGeometry.Flatten([outline],GeometryTolerancePolicy.DefaultCurveFlatnessMm).Select(text.Transform.Transform).ToArray();for(var i=1;i<outlinePoints.Length;i++)context.DrawLine(pen,Screen(outlinePoints[i-1]),Screen(outlinePoints[i]));}return;}
         var points=EntityGeometry.WorldPoints(entity);for(var i=1;i<points.Count;i++)context.DrawLine(pen,Screen(points[i-1]),Screen(points[i]));
         if(entity is RectangleEntity or CircleEntity or EllipseEntity or PolylineEntity{IsClosed:true}&&points.Count>2)context.DrawLine(pen,Screen(points[^1]),Screen(points[0]));
     }
@@ -306,7 +306,7 @@ public sealed class CadCanvas : Control
     }
     private void DrawSelection(DrawingContext context, CadEntity entity, Vector2D offset)
     {
-        if(_selectionDragMode!=SelectionDragMode.None){var ghost=EntityGeometry.Clone(entity);ghost.Transform=Matrix2D.Then(ghost.Transform,_transformPreview);DrawEntity(context,ghost,true);}else if (offset.Length > 1e-9) { var ghost = EntityGeometry.Clone(entity); EntityGeometry.Translate(ghost, offset); DrawEntity(context, ghost, true); }
+        if(_selectionDragMode!=SelectionDragMode.None){var ghost=EntityGeometry.Clone(entity);ghost.Transform=Matrix2D.Then(ghost.Transform,_transformPreview);DrawEntity(context,ghost,true);}else if (offset.Length > GeometryTolerancePolicy.DefaultEndpointEqualityMm) { var ghost = EntityGeometry.Clone(entity); EntityGeometry.Translate(ghost, offset); DrawEntity(context, ghost, true); }
         var primary=Selection.PrimaryId==entity.Id;DrawEntity(context,entity,false,1,new Pen(new SolidColorBrush(Color.FromArgb(220,10,14,17)),primary?7:5));DrawEntity(context,entity,false,1,new Pen(new SolidColorBrush(primary?Color.Parse("#FFE36E"):Color.Parse("#FFF2B0")),primary?3.2:2.2));
     }
     private BoundingBox? SelectedBounds(){var entities=Document.Entities.Where(x=>Selection.Contains(x.Id)).ToArray();return entities.Length==0?null:BoundingBox.FromPoints(entities.SelectMany(x=>{var b=x.GetBounds();return new[]{new Point2D(b.MinX,b.MinY),new Point2D(b.MaxX,b.MaxY)};}));}
@@ -363,7 +363,7 @@ public sealed class CadCanvas : Control
         for (var i = 0; i < frame.Segments.Count; i++)
         {
             var completion = i < frame.CompletedSegmentCount ? 1 : i == frame.ActiveSegmentIndex ? frame.ActiveSegmentProgress : 0;
-            var segment=frame.Segments[i]; var isPlunge=segment.Start.DistanceTo(segment.End)<1e-9&&Math.Abs(segment.EndZ-segment.StartZ)>1e-9;
+            var segment=frame.Segments[i]; var isPlunge=segment.Start.DistanceTo(segment.End)<GeometryTolerancePolicy.DefaultEndpointEqualityMm&&Math.Abs(segment.EndZ-segment.StartZ)>GeometryTolerancePolicy.DefaultEndpointEqualityMm;
             DrawPlaybackSegment(context, segment, completion, completion > 0 ? (segment.Kind == PlaybackMoveKind.Rapid ? rapid : isPlunge ? plunge : cut) : future);
         }
         if(!ShowCutter)return;var marker = P(frame.Position,frame.Z); var radius = Math.Max(5, frame.ToolDiameterMm * _camera.Zoom / 2); var markerPen = new Pen(new SolidColorBrush(Color.Parse("#72E6A8")), 2);
@@ -440,7 +440,7 @@ public sealed class CadCanvas : Control
         if(_selectionDragMode!=SelectionDragMode.None){var description=_selectionDragMode==SelectionDragMode.Rotate?"Selection rotated":"Selection resized";SelectionTransformed?.Invoke(_transformPreview,description);_selectionDragMode=SelectionDragMode.None;_transformPreview=Matrix2D.Identity;e.Pointer.Capture(null);ReportInteraction();InvalidateVisual();return;}
         if(NodeEditMode&&_nodeEntity is not null&&_cursorDocument is{} nodePoint){if(_nodeCanMove&&_nodeStartPoint is{} nodeStart&&nodeStart.DistanceTo(nodePoint)>1e-7)NodeMoved?.Invoke(_nodeEntity,_nodeIndex,nodePoint);_nodeEntity=null;_nodeIndex=-1;_nodeCanMove=false;_nodeStartPoint=null;e.Pointer.Capture(null);InvalidateVisual();return;}
         if (ActiveTool != CanvasTool.Select && _cursorDocument is { } drawingEnd) { var entity = _drawingSession.PointerReleased(drawingEnd, Document.ActiveLayerId); if (entity is not null) EntityCreated?.Invoke(entity); }
-        if(_moveStart is { } moveStart&&_moveCurrent is { } moveEnd&&moveStart.DistanceTo(moveEnd)>1e-6){SelectionMoved?.Invoke(moveEnd-moveStart);_selectionStart=null;_selectionEnd=null;}
+        if(_moveStart is { } moveStart&&_moveCurrent is { } moveEnd&&moveStart.DistanceTo(moveEnd)>GeometryTolerancePolicy.DefaultInteractiveMinimumLengthMm){SelectionMoved?.Invoke(moveEnd-moveStart);_selectionStart=null;_selectionEnd=null;}
         if (_selectionStart is { } start && _selectionEnd is { } end)
         {
             if (start.DistanceTo(end) < 2 / _viewport.Zoom)

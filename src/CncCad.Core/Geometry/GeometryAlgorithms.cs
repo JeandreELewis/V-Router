@@ -8,7 +8,7 @@ public static class GeometryAlgorithms
     {
         if(!Finite(start)||!Finite(pointOnArc)||!Finite(end))throw new ArgumentException("The three arc points must contain finite coordinates.");
         var middle=pointOnArc-start;var last=end-start;var middleLengthSquared=middle.X*middle.X+middle.Y*middle.Y;var lastLengthSquared=last.X*last.X+last.Y*last.Y;var endSpan=end-pointOnArc;
-        if(middleLengthSquared<=1e-18||lastLengthSquared<=1e-18||endSpan.Length<=1e-9)throw new ArgumentException("The three arc points must be distinct.");
+        var minimumLength=GeometryTolerancePolicy.DefaultMinimumLengthMm;if(middleLengthSquared<=minimumLength*minimumLength||lastLengthSquared<=minimumLength*minimumLength||endSpan.Length<=minimumLength)throw new ArgumentException("The three arc points must be distinct.");
         var cross=middle.X*last.Y-middle.Y*last.X;var scale=Math.Max(middleLengthSquared,lastLengthSquared);
         if (Math.Abs(cross) <= 1e-10*Math.Max(1,scale)) throw new ArgumentException("The three arc points cannot be collinear.");
         var determinant=2*cross;
@@ -20,7 +20,7 @@ public static class GeometryAlgorithms
         var ccwSweep = Normalize(endAngle - startAngle);
         var middleCcw = Normalize(middleAngle - startAngle);
         var sweep = middleCcw <= ccwSweep ? ccwSweep : ccwSweep - 360;
-        var radius=center.DistanceTo(start);if(!double.IsFinite(radius)||radius<=1e-9)throw new ArgumentException("The three arc points do not define a usable radius.");
+        var radius=center.DistanceTo(start);if(!double.IsFinite(radius)||radius<=GeometryTolerancePolicy.DefaultMinimumLengthMm)throw new ArgumentException("The three arc points do not define a usable radius.");
         return new ArcEntity { LayerId = layerId, Center = center, Radius = radius, StartAngleDegrees = startAngle, SweepAngleDegrees = sweep };
     }
 

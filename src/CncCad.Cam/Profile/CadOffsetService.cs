@@ -12,7 +12,7 @@ public sealed class CadOffsetService : ICadOffsetService
 {
     public CadOffsetResult Offset(IEnumerable<CadEntity> entities,double signedDistanceMm,CadOffsetJoin join)
     {
-        if(!double.IsFinite(signedDistanceMm)||Math.Abs(signedDistanceMm)<1e-9)return new([],"Offset distance must be finite and non-zero.");
+        if(!double.IsFinite(signedDistanceMm)||Math.Abs(signedDistanceMm)<GeometryTolerancePolicy.DefaultMinimumLengthMm)return new([],"Offset distance must be finite and non-zero.");
         try
         {
             var output=new List<CadEntity>();
@@ -54,9 +54,9 @@ public sealed class CadOffsetService : ICadOffsetService
     }
     private static List<Point2D> OffsetOpenPath(IReadOnlyList<Point2D> source,double distance,CadOffsetJoin join)
     {
-        var points=source.Where(point=>double.IsFinite(point.X)&&double.IsFinite(point.Y)).ToList();if(points.Count!=source.Count)throw new ArgumentException("Open offset source contains a non-finite coordinate.");points=RemoveAdjacentDuplicates(points,1e-9);if(points.Count<2)throw new ArgumentException("Open offset requires at least two distinct points.");var directions=new List<Vector2D>();var normals=new List<Vector2D>();for(var index=0;index<points.Count-1;index++){var delta=points[index+1]-points[index];var length=delta.Length;if(length<=1e-9)throw new ArgumentException("Open offset contains a collapsed segment.");var direction=new Vector2D(delta.X/length,delta.Y/length);directions.Add(direction);normals.Add(new(-direction.Y,direction.X));}
+        var points=source.Where(point=>double.IsFinite(point.X)&&double.IsFinite(point.Y)).ToList();if(points.Count!=source.Count)throw new ArgumentException("Open offset source contains a non-finite coordinate.");points=RemoveAdjacentDuplicates(points,GeometryTolerancePolicy.DefaultEndpointEqualityMm);if(points.Count<2)throw new ArgumentException("Open offset requires at least two distinct points.");var directions=new List<Vector2D>();var normals=new List<Vector2D>();for(var index=0;index<points.Count-1;index++){var delta=points[index+1]-points[index];var length=delta.Length;if(length<=GeometryTolerancePolicy.DefaultMinimumLengthMm)throw new ArgumentException("Open offset contains a collapsed segment.");var direction=new Vector2D(delta.X/length,delta.Y/length);directions.Add(direction);normals.Add(new(-direction.Y,direction.X));}
         var result=new List<Point2D>{Shift(points[0],normals[0],distance)};for(var index=1;index<points.Count-1;index++){var vertex=points[index];var previous=directions[index-1];var next=directions[index];var cross=Cross(previous,next);var dot=previous.X*next.X+previous.Y*next.Y;var previousOffset=Shift(vertex,normals[index-1],distance);var nextOffset=Shift(vertex,normals[index],distance);if(Math.Abs(cross)<=1e-10){if(dot<0)throw new ArgumentException("Open offset cannot resolve a 180-degree reversal.");result.Add(nextOffset);continue;}var intersection=InfiniteIntersection(Shift(points[index-1],normals[index-1],distance),previousOffset,nextOffset,Shift(points[index+1],normals[index],distance));if(cross*distance>0){result.Add(intersection);continue;}switch(join){case CadOffsetJoin.Miter:if(intersection.DistanceTo(vertex)<=Math.Abs(distance)*6)result.Add(intersection);else{result.Add(previousOffset);result.Add(nextOffset);}break;case CadOffsetJoin.Bevel:result.Add(previousOffset);result.Add(nextOffset);break;default:AddRoundJoin(result,vertex,previousOffset,nextOffset,cross);break;}}
-        result.Add(Shift(points[^1],normals[^1],distance));result=RemoveAdjacentDuplicates(result,1e-8);result=RemoveSelfIntersectionLoops(result,1e-8);return RemoveAdjacentDuplicates(result,1e-8);
+        result.Add(Shift(points[^1],normals[^1],distance));result=RemoveAdjacentDuplicates(result,GeometryTolerancePolicy.DefaultTopologyMergeMm);result=RemoveSelfIntersectionLoops(result,GeometryTolerancePolicy.DefaultTopologyMergeMm);return RemoveAdjacentDuplicates(result,GeometryTolerancePolicy.DefaultTopologyMergeMm);
     }
     private static void AddRoundJoin(List<Point2D> output,Point2D center,Point2D start,Point2D end,double turn)
     {

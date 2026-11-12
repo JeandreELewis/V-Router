@@ -9,7 +9,7 @@ public sealed record MachinabilityDiagnostic(MachinabilitySeverity Severity,stri
 public interface IRouterVectorPreparationService
 {
     VectorEditResult AddCornerRelief(PolylineEntity contour,IReadOnlyCollection<int> cornerIndices,double toolDiameterMm,CornerReliefStyle style);
-    IReadOnlyList<MachinabilityDiagnostic> Diagnose(IEnumerable<CadEntity> entities,double toolDiameterMm,double joinToleranceMm=.05);
+    IReadOnlyList<MachinabilityDiagnostic> Diagnose(IEnumerable<CadEntity> entities,double toolDiameterMm,double joinToleranceMm=GeometryTolerancePolicy.DefaultJoinToleranceMm);
 }
 
 public sealed class RouterVectorPreparationService : IRouterVectorPreparationService
@@ -20,7 +20,7 @@ public sealed class RouterVectorPreparationService : IRouterVectorPreparationSer
         if(toolDiameterMm<=0||!double.IsFinite(toolDiameterMm))return VectorEditResult.Fail("Choose a cutter with a positive diameter.");
         if(cornerIndices.Count==0)return VectorEditResult.Fail("Select at least one corner for relief.");
         var selected=cornerIndices.ToHashSet();if(selected.Any(i=>i<0||i>=contour.Points.Count))return VectorEditResult.Fail("A selected corner is outside the contour.");
-        var points=contour.Points.Select(contour.Transform.Transform).ToArray();if(points.Any(point=>!double.IsFinite(point.X)||!double.IsFinite(point.Y)))return VectorEditResult.Fail("Corner relief requires finite geometry.");var area=SignedArea(points);if(Math.Abs(area)<1e-9)return VectorEditResult.Fail("Corner relief requires a non-degenerate contour.");var radius=toolDiameterMm/2;var output=new List<Point2D>();
+        var points=contour.Points.Select(contour.Transform.Transform).ToArray();if(points.Any(point=>!double.IsFinite(point.X)||!double.IsFinite(point.Y)))return VectorEditResult.Fail("Corner relief requires finite geometry.");var area=SignedArea(points);if(Math.Abs(area)<GeometryTolerancePolicy.DefaultMinimumAreaMm2)return VectorEditResult.Fail("Corner relief requires a non-degenerate contour.");var radius=toolDiameterMm/2;var output=new List<Point2D>();
         for(var i=0;i<points.Length;i++)
         {
             var corner=points[i];
@@ -40,7 +40,7 @@ public sealed class RouterVectorPreparationService : IRouterVectorPreparationSer
         return new([new PolylineEntity{Id=contour.Id,LayerId=contour.LayerId,MaterialSheetId=contour.MaterialSheetId,GroupId=contour.GroupId,StrokeColor=contour.StrokeColor,IsVisible=contour.IsVisible,IsLocked=contour.IsLocked,Transform=Matrix2D.Identity,Points=output,IsClosed=true}]);
     }
 
-    public IReadOnlyList<MachinabilityDiagnostic> Diagnose(IEnumerable<CadEntity> entities,double toolDiameterMm,double joinToleranceMm=.05)
+    public IReadOnlyList<MachinabilityDiagnostic> Diagnose(IEnumerable<CadEntity> entities,double toolDiameterMm,double joinToleranceMm=GeometryTolerancePolicy.DefaultJoinToleranceMm)
     {
         var source=entities.ToArray();var result=new List<MachinabilityDiagnostic>();
         if(!double.IsFinite(toolDiameterMm)||toolDiameterMm<=0)result.Add(new(MachinabilitySeverity.Error,"tool","Tool diameter must be a positive finite value."));if(!double.IsFinite(joinToleranceMm)||joinToleranceMm<=0){result.Add(new(MachinabilitySeverity.Error,"tolerance","Join tolerance must be a positive finite value."));return result;}
@@ -61,6 +61,6 @@ public sealed class RouterVectorPreparationService : IRouterVectorPreparationSer
     private static double SignedArea(IReadOnlyList<Point2D> points){var area=0d;for(var index=0;index<points.Count;index++){var next=points[(index+1)%points.Count];area+=points[index].X*next.Y-next.X*points[index].Y;}return area/2;}
     private static void AddArc(List<Point2D> output,Point2D center,double radius,double start,double sweep,Point2D end)
     {
-        var maximumStep=2*Math.Acos(Math.Clamp(1-.02/radius,-1,1));if(!double.IsFinite(maximumStep)||maximumStep<=1e-6)maximumStep=Math.PI/180;var count=Math.Clamp((int)Math.Ceiling(Math.Abs(sweep)/maximumStep),1,16384);for(var step=1;step<count;step++){var angle=start+sweep*step/count;output.Add(new(center.X+radius*Math.Cos(angle),center.Y+radius*Math.Sin(angle)));}output.Add(end);
+        var maximumStep=2*Math.Acos(Math.Clamp(1-GeometryTolerancePolicy.DefaultCurveFlatnessMm/radius,-1,1));if(!double.IsFinite(maximumStep)||maximumStep<=GeometryTolerancePolicy.DefaultInteractiveMinimumLengthMm)maximumStep=Math.PI/180;var count=Math.Clamp((int)Math.Ceiling(Math.Abs(sweep)/maximumStep),1,16384);for(var step=1;step<count;step++){var angle=start+sweep*step/count;output.Add(new(center.X+radius*Math.Cos(angle),center.Y+radius*Math.Sin(angle)));}output.Add(end);
     }
 }

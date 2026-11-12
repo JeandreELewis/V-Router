@@ -9,7 +9,7 @@ public sealed record VectorPathNodeEdit(IReadOnlyList<VectorPathFigure> Figures,
 
 public static class VectorPathNodes
 {
-    private const double Tolerance=1e-9;
+    private const double Tolerance=GeometryTolerancePolicy.DefaultEndpointEqualityMm;
 
     public static IReadOnlyList<VectorPathNode> Describe(VectorPathEntity path)
     {

@@ -15,8 +15,8 @@ public static class EntityGeometry
         DrillPointEntity drill => [[drill.Transform.Transform(drill.Position)]],
         EllipseEntity ellipse => [Enumerable.Range(0, curveSegments).Select(i => ellipse.Transform.Transform(new(ellipse.Center.X + ellipse.RadiusX * Math.Cos(i * Math.PI * 2 / curveSegments), ellipse.Center.Y + ellipse.RadiusY * Math.Sin(i * Math.PI * 2 / curveSegments)))).ToArray()],
         ArcEntity arc => [Enumerable.Range(0, curveSegments + 1).Select(i => GeometryAlgorithms.PointOnArc(arc, arc.StartAngleDegrees + arc.SweepAngleDegrees * i / curveSegments)).ToArray()],
-        VectorPathEntity path => path.Figures.Select(figure=>(IReadOnlyList<Point2D>)VectorPathGeometry.Flatten([figure],.02).Select(path.Transform.Transform).ToArray()).ToArray(),
-        TextEntity text => text.Outlines.Select(figure=>(IReadOnlyList<Point2D>)VectorPathGeometry.Flatten([figure],.02).Select(text.Transform.Transform).ToArray()).ToArray(),
+        VectorPathEntity path => path.Figures.Select(figure=>(IReadOnlyList<Point2D>)VectorPathGeometry.Flatten([figure],GeometryTolerancePolicy.DefaultCurveFlatnessMm).Select(path.Transform.Transform).ToArray()).ToArray(),
+        TextEntity text => text.Outlines.Select(figure=>(IReadOnlyList<Point2D>)VectorPathGeometry.Flatten([figure],GeometryTolerancePolicy.DefaultCurveFlatnessMm).Select(text.Transform.Transform).ToArray()).ToArray(),
         _ => []
     };
 
@@ -90,7 +90,7 @@ public static class EntityGeometry
         RectangleEntity rectangle => rectangle.Corners.Zip(rectangle.Corners.Skip(1).Append(rectangle.Corners[0]), Mid).Select(rectangle.Transform.Transform).ToArray(),
         PolylineEntity polyline => polyline.Points.Zip(polyline.Points.Skip(1), Mid).Select(polyline.Transform.Transform).ToArray(),
         ArcEntity arc => [GeometryAlgorithms.PointOnArc(arc, arc.StartAngleDegrees + arc.SweepAngleDegrees / 2)],
-        VectorPathEntity path => path.Figures.SelectMany(figure=>VectorPathGeometry.Flatten([figure],.02).Zip(VectorPathGeometry.Flatten([figure],.02).Skip(1),Mid)).Select(path.Transform.Transform).ToArray(),
+        VectorPathEntity path => path.Figures.SelectMany(figure=>VectorPathGeometry.Flatten([figure],GeometryTolerancePolicy.DefaultCurveFlatnessMm).Zip(VectorPathGeometry.Flatten([figure],GeometryTolerancePolicy.DefaultCurveFlatnessMm).Skip(1),Mid)).Select(path.Transform.Transform).ToArray(),
         _ => []
     };
 

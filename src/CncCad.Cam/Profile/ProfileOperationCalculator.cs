@@ -34,7 +34,7 @@ public sealed class ProfileOperationCalculator : ICamOperationCalculator
             path = profile.StartPointFraction > 0 ? RotateFraction(path, profile.StartPointFraction) : !profile.Tabs.Enabled ? RotateNearest(path, current) : path;
             current = path[0];var contourTabs=reversed?ReverseTabs(profile.Tabs,contour.SourceGeometryId):profile.Tabs;
             var tabs=ProfileTabEngine.Validate(path,contourTabs,profile.CutDepthMm,double.PositiveInfinity,contour.SourceGeometryId);if(!tabs.Success)return OperationCalculationResult.Failed(tabs.Issues.Select(x=>new OperationValidationError(x.Code,x.Message)).ToArray());
-            var tangent = path[1] - path[0]; var tangentLength=Math.Max(1e-9,tangent.Length);var unit=new Point2D(tangent.X/tangentLength,tangent.Y/tangentLength);var normal=new Point2D(-unit.Y,unit.X);var arcLead=profile.LeadStyle==ProfileLeadStyle.Arc;var leadStart=arcLead?new Point2D(path[0].X-unit.X*profile.LeadInLengthMm+normal.X*profile.LeadInLengthMm,path[0].Y-unit.Y*profile.LeadInLengthMm+normal.Y*profile.LeadInLengthMm):new Point2D(path[0].X-unit.X*profile.LeadInLengthMm,path[0].Y-unit.Y*profile.LeadInLengthMm);
+            var tangent = path[1] - path[0]; var tangentLength=Math.Max(GeometryTolerancePolicy.DefaultMinimumLengthMm,tangent.Length);var unit=new Point2D(tangent.X/tangentLength,tangent.Y/tangentLength);var normal=new Point2D(-unit.Y,unit.X);var arcLead=profile.LeadStyle==ProfileLeadStyle.Arc;var leadStart=arcLead?new Point2D(path[0].X-unit.X*profile.LeadInLengthMm+normal.X*profile.LeadInLengthMm,path[0].Y-unit.Y*profile.LeadInLengthMm+normal.Y*profile.LeadInLengthMm):new Point2D(path[0].X-unit.X*profile.LeadInLengthMm,path[0].Y-unit.Y*profile.LeadInLengthMm);
             toolpath.Moves.Add(new RapidMove(profile.LeadInLengthMm>0?leadStart:current, profile.SafeZMm));
             var previousDepth=profile.StartDepthMm;
             foreach (var depth in PassDepths(profile))
@@ -53,7 +53,7 @@ public sealed class ProfileOperationCalculator : ICamOperationCalculator
                 // The rough contour has just been cut to full depth. Feed laterally into
                 // the finish allowance from that cleared contour; plunging on the finish
                 // contour would descend through material intentionally left by roughing.
-                if(path[0].DistanceTo(finish[0])>1e-9)toolpath.Moves.Add(new LinearMove(finish[0],-profile.CutDepthMm,profile.FeedRateMmPerMin));
+                if(path[0].DistanceTo(finish[0])>GeometryTolerancePolicy.DefaultEndpointEqualityMm)toolpath.Moves.Add(new LinearMove(finish[0],-profile.CutDepthMm,profile.FeedRateMmPerMin));
                 ProfileTabEngine.AddClosedPass(toolpath.Moves,finish,profile.CutDepthMm,profile.CutDepthMm,contourTabs,profile.FeedRateMmPerMin,contour.SourceGeometryId);
                 toolpath.Moves.Add(new RapidMove(finish[0],profile.SafeZMm));current=finish[0];continue;
             }
@@ -92,7 +92,7 @@ public sealed class ProfileOperationCalculator : ICamOperationCalculator
     private static List<Point2D> RotateFraction(List<Point2D> path,double fraction)
     {
         if(path.Count<2)return path;
-        var lengths=Enumerable.Range(0,path.Count).Select(index=>path[index].DistanceTo(path[(index+1)%path.Count])).ToArray();var perimeter=lengths.Sum();if(perimeter<=1e-9)return path;
+        var lengths=Enumerable.Range(0,path.Count).Select(index=>path[index].DistanceTo(path[(index+1)%path.Count])).ToArray();var perimeter=lengths.Sum();if(perimeter<=GeometryTolerancePolicy.DefaultMinimumLengthMm)return path;
         var target=Math.Clamp(fraction,0,Math.BitDecrement(1d))*perimeter;var travelled=0d;
         for(var index=0;index<path.Count;index++)
         {
@@ -114,7 +114,7 @@ public sealed class ProfileOperationCalculator : ICamOperationCalculator
     {
         moves.Add(new LinearMove(path[0],-fromDepth,feed));
         var route=new List<Point2D>{path[0]};var travelled=0d;var index=0;
-        while(travelled<length-1e-9)
+        while(travelled<length-GeometryTolerancePolicy.DefaultEndpointEqualityMm)
         {
             var nextIndex=(index+1)%path.Count;var start=path[index];var end=path[nextIndex];var segmentLength=start.DistanceTo(end);if(segmentLength<=1e-12)break;var remaining=length-travelled;var fraction=Math.Min(1,remaining/segmentLength);var next=fraction>=1-1e-12?end:new Point2D(start.X+(end.X-start.X)*fraction,start.Y+(end.Y-start.Y)*fraction);travelled+=segmentLength*fraction;var depth=fromDepth+(toDepth-fromDepth)*Math.Min(1,travelled/length);moves.Add(new LinearMove(next,-depth,feed));route.Add(next);if(fraction<1-1e-12)break;index=nextIndex;
         }

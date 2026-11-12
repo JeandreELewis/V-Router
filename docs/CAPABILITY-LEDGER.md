@@ -29,7 +29,7 @@ Status meanings:
 | Groups | Verified | Selected unlocked entities share a group identity; clicking one member selects the complete editable group | Group/ungroup are single undoable transactions, preserve entity identity and invalidate dependent CAM; locked selections are rejected | Pointer selection, undo/redo and version-9 persistence fixtures pass |
 | Layers | Verified | Add/delete/reorder/activate/show/lock/move entities and edit name/colour | All visible mutations use undoable commands | Draft layer behavior; layer command and ViewModel tests |
 | Finite-number policy | Verified | Geometry, operation inputs, generated moves, machines and posts | Structured diagnostic; no NaN/infinity reaches generated motion | Independent safety policy; numeric rejection tests |
-| Tolerance policy | Incomplete | Millimetres are canonical; explicit tolerances used for topology | Degenerate and self-intersecting contours rejected | Sketcher geometry validity; one shared configurable policy remains |
+| Tolerance policy | Verified | Millimetres are canonical; one immutable production policy defines endpoint equality, minimum length/area, interaction, curve-flattening, import and boolean precision tolerances while keeping dimensionless numerical guards explicit | Degenerate and self-intersecting contours are rejected; alternate policy records validate before use | Shared-policy tests plus geometry, topology, import and CAM property fixtures |
 
 ## Drawing and editing
 

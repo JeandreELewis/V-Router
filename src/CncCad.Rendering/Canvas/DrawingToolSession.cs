@@ -24,14 +24,14 @@ public sealed class DrawingToolSession
             case CanvasTool.Rectangle: _points.Clear(); _points.Add(point); _dragging = true; break;
             case CanvasTool.Line:
                 if (_points.Count == 0) _points.Add(point);
-                else { if(_points[0].DistanceTo(point)<=1e-6)return null;var entity = new LineEntity { LayerId = layerId, Start = _points[0], End = point }; Cancel(); return entity; }
+                else { if(_points[0].DistanceTo(point)<=GeometryTolerancePolicy.DefaultInteractiveMinimumLengthMm)return null;var entity = new LineEntity { LayerId = layerId, Start = _points[0], End = point }; Cancel(); return entity; }
                 break;
             case CanvasTool.Circle:
                 if (_points.Count == 0) _points.Add(point);
-                else { var radius = _points[0].DistanceTo(point); if (radius <= 1e-6) return null; var entity = new CircleEntity { LayerId = layerId, Center = _points[0], Radius = radius }; Cancel(); return entity; }
+                else { var radius = _points[0].DistanceTo(point); if (radius <= GeometryTolerancePolicy.DefaultInteractiveMinimumLengthMm) return null; var entity = new CircleEntity { LayerId = layerId, Center = _points[0], Radius = radius }; Cancel(); return entity; }
                 break;
             case CanvasTool.Polyline:
-                if (_points.Count == 0 || _points[^1].DistanceTo(point) > 1e-6) _points.Add(point);
+                if (_points.Count == 0 || _points[^1].DistanceTo(point) > GeometryTolerancePolicy.DefaultInteractiveMinimumLengthMm) _points.Add(point);
                 if (clickCount >= 2 && _points.Count >= 2) return FinishPolyline(layerId, false);
                 break;
             case CanvasTool.Arc:
@@ -51,7 +51,7 @@ public sealed class DrawingToolSession
         if (Tool != CanvasTool.Rectangle || !_dragging || _points.Count == 0||!Finite(point)) return null;
         _dragging = false;
         var start = _points[0]; Cancel();
-        if (Math.Abs(start.X-point.X)<=1e-6||Math.Abs(start.Y-point.Y)<=1e-6) return null;
+        if (Math.Abs(start.X-point.X)<=GeometryTolerancePolicy.DefaultInteractiveMinimumLengthMm||Math.Abs(start.Y-point.Y)<=GeometryTolerancePolicy.DefaultInteractiveMinimumLengthMm) return null;
         return new RectangleEntity { LayerId = layerId, Origin = new(Math.Min(start.X, point.X), Math.Min(start.Y, point.Y)), Width = Math.Abs(point.X - start.X), Height = Math.Abs(point.Y - start.Y) };
     }
 

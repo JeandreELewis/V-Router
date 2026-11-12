@@ -54,7 +54,7 @@ public sealed class PocketOperationCalculator : ICamOperationCalculator
             var start = path[0];
             if(pocket.EntryMode==PocketEntryMode.Helix)
             {
-                var entry=helixPlans![pathIndex];toolpath.Moves.Add(new RapidMove(entry.Start,pocket.SafeZMm));toolpath.Moves.Add(new LinearMove(entry.Start,-previousDepth,pocket.PlungeRateMmPerMin));toolpath.Moves.Add(new ArcMove(entry.Start,entry.Center,-depth,pocket.FeedRateMmPerMin,pocket.Direction==CutDirection.Climb));if(entry.Start.DistanceTo(start)>1e-9)toolpath.Moves.Add(new LinearMove(start,-depth,pocket.FeedRateMmPerMin));
+                var entry=helixPlans![pathIndex];toolpath.Moves.Add(new RapidMove(entry.Start,pocket.SafeZMm));toolpath.Moves.Add(new LinearMove(entry.Start,-previousDepth,pocket.PlungeRateMmPerMin));toolpath.Moves.Add(new ArcMove(entry.Start,entry.Center,-depth,pocket.FeedRateMmPerMin,pocket.Direction==CutDirection.Climb));if(entry.Start.DistanceTo(start)>GeometryTolerancePolicy.DefaultEndpointEqualityMm)toolpath.Moves.Add(new LinearMove(start,-depth,pocket.FeedRateMmPerMin));
             }
             else if (pocket.EntryMode == PocketEntryMode.LinearRamp && pocket.RampLengthMm > 0 && path.Count > 1)
             {
@@ -77,7 +77,7 @@ public sealed class PocketOperationCalculator : ICamOperationCalculator
         {
             toolpath.Moves.Add(new RapidMove(finish.ClearedStart,pocket.SafeZMm));
             toolpath.Moves.Add(new LinearMove(finish.ClearedStart,-pocket.CutDepthMm,pocket.PlungeRateMmPerMin));
-            if(finish.ClearedStart.DistanceTo(finish.Path[0])>1e-9)
+            if(finish.ClearedStart.DistanceTo(finish.Path[0])>GeometryTolerancePolicy.DefaultEndpointEqualityMm)
                 toolpath.Moves.Add(new LinearMove(finish.Path[0],-pocket.CutDepthMm,pocket.FeedRateMmPerMin));
             foreach(var point in finish.Path.Skip(1))toolpath.Moves.Add(new LinearMove(point,-pocket.CutDepthMm,pocket.FeedRateMmPerMin));
             toolpath.Moves.Add(new LinearMove(finish.Path[0],-pocket.CutDepthMm,pocket.FeedRateMmPerMin));
@@ -106,12 +106,12 @@ public sealed class PocketOperationCalculator : ICamOperationCalculator
     private static IReadOnlyList<IReadOnlyList<Point2D>> RasterPaths(IReadOnlyList<IReadOnlyList<Point2D>> contours,double stepOver)
     {
         var all=contours.SelectMany(x=>x).ToArray();if(all.Length==0)return[];var minY=all.Min(x=>x.Y);var maxY=all.Max(x=>x.Y);var result=new List<IReadOnlyList<Point2D>>();var reverse=false;
-        for(var y=minY;y<=maxY+1e-9;y+=stepOver)
+        for(var y=minY;y<=maxY+GeometryTolerancePolicy.DefaultEndpointEqualityMm;y+=stepOver)
         {
             var intersections=new List<double>();
             foreach(var contour in contours)for(var i=0;i<contour.Count;i++){var a=contour[i];var b=contour[(i+1)%contour.Count];if((a.Y>y)!=(b.Y>y))intersections.Add(a.X+(y-a.Y)*(b.X-a.X)/(b.Y-a.Y));}
             intersections.Sort();
-            for(var i=0;i+1<intersections.Count;i+=2){var left=intersections[i];var right=intersections[i+1];if(right-left<=1e-6)continue;var line=(IReadOnlyList<Point2D>)[new(left,y),new(right,y)];result.Add(reverse?line.Reverse().ToArray():line);reverse=!reverse;}
+            for(var i=0;i+1<intersections.Count;i+=2){var left=intersections[i];var right=intersections[i+1];if(right-left<=GeometryTolerancePolicy.DefaultInteractiveMinimumLengthMm)continue;var line=(IReadOnlyList<Point2D>)[new(left,y),new(right,y)];result.Add(reverse?line.Reverse().ToArray():line);reverse=!reverse;}
         }
         return result;
     }
@@ -125,11 +125,11 @@ public sealed class PocketOperationCalculator : ICamOperationCalculator
     }
     private static IEnumerable<List<Point2D>> EntryRoutes(IReadOnlyList<Point2D> path,bool closed)
     {
-        if(closed){for(var index=0;index<path.Count;index++)yield return[..path.Skip(index),..path.Take(index)];yield break;}if(path.Count==2){var a=path[0];var b=path[1];foreach(var fraction in new[]{.5,.25,.75,0d,1d}){var point=new Point2D(a.X+(b.X-a.X)*fraction,a.Y+(b.Y-a.Y)*fraction);var route=new List<Point2D>{point};if(point.DistanceTo(a)>1e-9)route.Add(a);if(route[^1].DistanceTo(point)>1e-9)route.Add(point);if(point.DistanceTo(b)>1e-9)route.Add(b);yield return route;}yield break;}yield return path.ToList();
+        if(closed){for(var index=0;index<path.Count;index++)yield return[..path.Skip(index),..path.Take(index)];yield break;}if(path.Count==2){var a=path[0];var b=path[1];foreach(var fraction in new[]{.5,.25,.75,0d,1d}){var point=new Point2D(a.X+(b.X-a.X)*fraction,a.Y+(b.Y-a.Y)*fraction);var route=new List<Point2D>{point};if(point.DistanceTo(a)>GeometryTolerancePolicy.DefaultEndpointEqualityMm)route.Add(a);if(route[^1].DistanceTo(point)>GeometryTolerancePolicy.DefaultEndpointEqualityMm)route.Add(point);if(point.DistanceTo(b)>GeometryTolerancePolicy.DefaultEndpointEqualityMm)route.Add(b);yield return route;}yield break;}yield return path.ToList();
     }
     private static HelixEntry FindHelixEntry(IReadOnlyList<Point2D>[] contours,Point2D pathStart,double cutterClearance,double radius)
     {
-        var all=contours.SelectMany(contour=>contour).ToArray();var required=cutterClearance+radius;var minX=all.Min(point=>point.X)+required;var maxX=all.Max(point=>point.X)-required;var minY=all.Min(point=>point.Y)+required;var maxY=all.Max(point=>point.Y)-required;if(minX>maxX||minY>maxY)return default;var candidates=new List<Point2D>{new((minX+maxX)/2,(minY+maxY)/2)};var step=Math.Clamp(Math.Min(Math.Max(radius,.5),5),.5,5);for(var y=minY;y<=maxY+1e-9;y+=step)for(var x=minX;x<=maxX+1e-9;x+=step)candidates.Add(new(x,y));foreach(var center in candidates.Distinct().OrderBy(candidate=>candidate.DistanceTo(pathStart)).ThenBy(candidate=>candidate.Y).ThenBy(candidate=>candidate.X)){if(!CenterIsMachinable(center,contours,required))continue;for(var angleIndex=0;angleIndex<16;angleIndex++){var angle=angleIndex*Math.PI/8;var start=new Point2D(center.X+radius*Math.Cos(angle),center.Y+radius*Math.Sin(angle));if(SegmentIsMachinable(start,pathStart,contours,cutterClearance))return new(center,start,true);}}return default;
+        var all=contours.SelectMany(contour=>contour).ToArray();var required=cutterClearance+radius;var minX=all.Min(point=>point.X)+required;var maxX=all.Max(point=>point.X)-required;var minY=all.Min(point=>point.Y)+required;var maxY=all.Max(point=>point.Y)-required;if(minX>maxX||minY>maxY)return default;var candidates=new List<Point2D>{new((minX+maxX)/2,(minY+maxY)/2)};var step=Math.Clamp(Math.Min(Math.Max(radius,.5),5),.5,5);for(var y=minY;y<=maxY+GeometryTolerancePolicy.DefaultEndpointEqualityMm;y+=step)for(var x=minX;x<=maxX+GeometryTolerancePolicy.DefaultEndpointEqualityMm;x+=step)candidates.Add(new(x,y));foreach(var center in candidates.Distinct().OrderBy(candidate=>candidate.DistanceTo(pathStart)).ThenBy(candidate=>candidate.Y).ThenBy(candidate=>candidate.X)){if(!CenterIsMachinable(center,contours,required))continue;for(var angleIndex=0;angleIndex<16;angleIndex++){var angle=angleIndex*Math.PI/8;var start=new Point2D(center.X+radius*Math.Cos(angle),center.Y+radius*Math.Sin(angle));if(SegmentIsMachinable(start,pathStart,contours,cutterClearance))return new(center,start,true);}}return default;
     }
     private static bool CenterIsMachinable(Point2D point,IReadOnlyList<Point2D>[] contours,double clearance)
     {
@@ -180,7 +180,7 @@ public sealed class PocketOperationCalculator : ICamOperationCalculator
         var currentIndex=0;
         var direction=1;
         var travelled=0d;
-        while(travelled<rampLength-1e-9)
+        while(travelled<rampLength-GeometryTolerancePolicy.DefaultEndpointEqualityMm)
         {
             int nextIndex;
             if(closed)nextIndex=(currentIndex+1)%path.Count;

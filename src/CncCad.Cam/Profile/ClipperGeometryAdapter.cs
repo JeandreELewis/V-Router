@@ -6,8 +6,8 @@ namespace CncCad.Cam.Profile;
 
 internal static class ClipperGeometryAdapter
 {
-    internal const double CircleToleranceMm = 0.02;
-    internal const int DecimalPrecision = 6;
+    internal const double CircleToleranceMm = GeometryTolerancePolicy.DefaultCurveFlatnessMm;
+    internal const int DecimalPrecision = GeometryTolerancePolicy.DefaultBooleanDecimalPrecision;
     public static IReadOnlyList<Point2D> ToContour(CadEntity entity) => entity switch
     {
         RectangleEntity rectangle => Normalize(rectangle.Corners.Select(rectangle.Transform.Transform)),
@@ -21,15 +21,15 @@ internal static class ClipperGeometryAdapter
 
     public static IReadOnlyList<IReadOnlyList<Point2D>> Offset(IReadOnlyList<Point2D> contour, double delta)
     {
-        if (Math.Abs(delta) < 1e-9) return [contour];
+        if (Math.Abs(delta) < GeometryTolerancePolicy.DefaultEndpointEqualityMm) return [contour];
         var paths = new PathsD { new(contour.Select(point => new PointD(point.X, point.Y))) };
         var result = Clipper.InflatePaths(paths, delta, JoinType.Miter, EndType.Polygon, 6, DecimalPrecision);
-        return result.Select(path => (IReadOnlyList<Point2D>)path.Select(point => new Point2D(point.x, point.y)).ToArray()).Where(path => path.Count >= 3 && Math.Abs(SignedArea(path)) > 1e-8).ToArray();
+        return result.Select(path => (IReadOnlyList<Point2D>)path.Select(point => new Point2D(point.x, point.y)).ToArray()).Where(path => path.Count >= 3 && Math.Abs(SignedArea(path)) > GeometryTolerancePolicy.DefaultMinimumAreaMm2).ToArray();
     }
 
     public static IReadOnlyList<IReadOnlyList<Point2D>> OffsetRound(IReadOnlyList<Point2D> contour,double delta)
     {
-        if(Math.Abs(delta)<1e-9)return[contour];var paths=new PathsD{new(contour.Select(point=>new PointD(point.X,point.Y)))};var result=Clipper.InflatePaths(paths,delta,JoinType.Round,EndType.Polygon,6,DecimalPrecision);return result.Select(path=>(IReadOnlyList<Point2D>)path.Select(point=>new Point2D(point.x,point.y)).ToArray()).Where(path=>path.Count>=3&&Math.Abs(SignedArea(path))>1e-8).ToArray();
+        if(Math.Abs(delta)<GeometryTolerancePolicy.DefaultEndpointEqualityMm)return[contour];var paths=new PathsD{new(contour.Select(point=>new PointD(point.X,point.Y)))};var result=Clipper.InflatePaths(paths,delta,JoinType.Round,EndType.Polygon,6,DecimalPrecision);return result.Select(path=>(IReadOnlyList<Point2D>)path.Select(point=>new Point2D(point.x,point.y)).ToArray()).Where(path=>path.Count>=3&&Math.Abs(SignedArea(path))>GeometryTolerancePolicy.DefaultMinimumAreaMm2).ToArray();
     }
 
     public static IReadOnlyList<IReadOnlyList<Point2D>> PocketOffsets(IEnumerable<IReadOnlyList<Point2D>> contours, double initialInset, double stepOver)
@@ -39,7 +39,7 @@ internal static class ClipperGeometryAdapter
         if (source.Count == 0) return [];
         var region = Clipper.Union(source, [], FillRule.EvenOdd, DecimalPrecision);
         var result = new List<IReadOnlyList<Point2D>>();
-        var inset = Math.Max(initialInset, 1e-6);
+        var inset = Math.Max(initialInset, GeometryTolerancePolicy.DefaultInteractiveMinimumLengthMm);
         for (var guard = 0; guard < 10000; guard++, inset += stepOver)
         {
             var level = Clipper.InflatePaths(region, -inset, JoinType.Miter, EndType.Polygon, 6, DecimalPrecision);
@@ -47,14 +47,14 @@ internal static class ClipperGeometryAdapter
             foreach (var path in level)
             {
                 var points = path.Select(point => new Point2D(point.x, point.y)).ToArray();
-                if (points.Length >= 3 && Math.Abs(SignedArea(points)) > 1e-8) result.Add(points);
+                if (points.Length >= 3 && Math.Abs(SignedArea(points)) > GeometryTolerancePolicy.DefaultMinimumAreaMm2) result.Add(points);
             }
         }
         return result;
     }
     public static IReadOnlyList<IReadOnlyList<Point2D>> InsetRegion(IEnumerable<IReadOnlyList<Point2D>> contours,double inset)
     {
-        if(!double.IsFinite(inset)||inset<0)throw new ArgumentOutOfRangeException(nameof(inset));var source=new PathsD(contours.Select(contour=>new PathD(contour.Select(point=>new PointD(point.X,point.Y)))));if(source.Count==0)return[];var region=Clipper.Union(source,[],FillRule.EvenOdd,DecimalPrecision);var result=inset<=1e-9?region:Clipper.InflatePaths(region,-inset,JoinType.Miter,EndType.Polygon,6,DecimalPrecision);return result.Where(path=>path.Count>=3&&Math.Abs(Clipper.Area(path))>1e-8).Select(path=>(IReadOnlyList<Point2D>)path.Select(point=>new Point2D(point.x,point.y)).ToArray()).ToArray();
+        if(!double.IsFinite(inset)||inset<0)throw new ArgumentOutOfRangeException(nameof(inset));var source=new PathsD(contours.Select(contour=>new PathD(contour.Select(point=>new PointD(point.X,point.Y)))));if(source.Count==0)return[];var region=Clipper.Union(source,[],FillRule.EvenOdd,DecimalPrecision);var result=inset<=GeometryTolerancePolicy.DefaultEndpointEqualityMm?region:Clipper.InflatePaths(region,-inset,JoinType.Miter,EndType.Polygon,6,DecimalPrecision);return result.Where(path=>path.Count>=3&&Math.Abs(Clipper.Area(path))>GeometryTolerancePolicy.DefaultMinimumAreaMm2).Select(path=>(IReadOnlyList<Point2D>)path.Select(point=>new Point2D(point.x,point.y)).ToArray()).ToArray();
     }
 
     public static double SignedArea(IReadOnlyList<Point2D> path)
@@ -73,14 +73,14 @@ internal static class ClipperGeometryAdapter
     }
     public static bool Overlaps(IReadOnlyList<Point2D> a,IReadOnlyList<Point2D> b,double spacing)
     {
-        var pa=new PathsD{new(a.Select(x=>new PointD(x.X,x.Y)))};if(spacing>0)pa=Clipper.InflatePaths(pa,spacing/2,JoinType.Miter,EndType.Polygon,6,DecimalPrecision);var pb=new PathsD{new(b.Select(x=>new PointD(x.X,x.Y)))};if(spacing>0)pb=Clipper.InflatePaths(pb,spacing/2,JoinType.Miter,EndType.Polygon,6,DecimalPrecision);return Clipper.Intersect(pa,pb,FillRule.NonZero,DecimalPrecision).Sum(x=>Math.Abs(Clipper.Area(x)))>1e-8;
+        var pa=new PathsD{new(a.Select(x=>new PointD(x.X,x.Y)))};if(spacing>0)pa=Clipper.InflatePaths(pa,spacing/2,JoinType.Miter,EndType.Polygon,6,DecimalPrecision);var pb=new PathsD{new(b.Select(x=>new PointD(x.X,x.Y)))};if(spacing>0)pb=Clipper.InflatePaths(pb,spacing/2,JoinType.Miter,EndType.Polygon,6,DecimalPrecision);return Clipper.Intersect(pa,pb,FillRule.NonZero,DecimalPrecision).Sum(x=>Math.Abs(Clipper.Area(x)))>GeometryTolerancePolicy.DefaultMinimumAreaMm2;
     }
     private static IReadOnlyList<Point2D> Normalize(IEnumerable<Point2D> points)
     {
         var result = points.ToList();
         if (result.Any(point => !double.IsFinite(point.X) || !double.IsFinite(point.Y))) throw new ArgumentException("Contour contains a non-finite coordinate.");
-        if (result.Count > 1 && result[0].DistanceTo(result[^1]) < 1e-9) result.RemoveAt(result.Count - 1);
-        if (result.Count < 3 || Math.Abs(SignedArea(result)) < 1e-8) throw new ArgumentException("Contour is degenerate.");
+        if (result.Count > 1 && result[0].DistanceTo(result[^1]) < GeometryTolerancePolicy.DefaultEndpointEqualityMm) result.RemoveAt(result.Count - 1);
+        if (result.Count < 3 || Math.Abs(SignedArea(result)) < GeometryTolerancePolicy.DefaultMinimumAreaMm2) throw new ArgumentException("Contour is degenerate.");
         if (!IsSimple(result)) throw new ArgumentException("Contour intersects itself.");
         if (SignedArea(result) < 0) result.Reverse(); return result;
     }

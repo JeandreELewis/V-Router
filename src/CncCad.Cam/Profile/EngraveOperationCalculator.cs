@@ -66,7 +66,7 @@ public sealed class EngraveOperationCalculator:ICamOperationCalculator
     };
     private static EngravePath FromPoints(IReadOnlyList<Point2D> points,bool closed)
     {
-        if(points.Count==0)return new(default,default,[]);var segments=points.Skip(1).Select(point=>(EngraveSegment)new EngraveLine(point)).ToList();if(closed&&points.Count>1&&points[0].DistanceTo(points[^1])>1e-9)segments.Add(new EngraveLine(points[0]));return new(default,points[0],segments);
+        if(points.Count==0)return new(default,default,[]);var segments=points.Skip(1).Select(point=>(EngraveSegment)new EngraveLine(point)).ToList();if(closed&&points.Count>1&&points[0].DistanceTo(points[^1])>GeometryTolerancePolicy.DefaultEndpointEqualityMm)segments.Add(new EngraveLine(points[0]));return new(default,points[0],segments);
     }
     private static EngravePath FromFigure(VectorPathFigure figure,Matrix2D transform)
     {
@@ -82,7 +82,7 @@ public sealed class EngraveOperationCalculator:ICamOperationCalculator
             }
             current=segment.End;
         }
-        if(figure.IsClosed&&segments.Count>0&&segments[^1].End.DistanceTo(start)>1e-9)segments.Add(new EngraveLine(start));
+        if(figure.IsClosed&&segments.Count>0&&segments[^1].End.DistanceTo(start)>GeometryTolerancePolicy.DefaultEndpointEqualityMm)segments.Add(new EngraveLine(start));
         return new(default,start,segments);
     }
     private static EngravePath NativeArc(ArcEntity arc)

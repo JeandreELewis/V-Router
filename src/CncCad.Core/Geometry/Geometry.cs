@@ -47,7 +47,7 @@ public readonly record struct Matrix2D(double M11, double M12, double M21, doubl
     public Matrix2D Inverse()
     {
         var determinant = M11 * M22 - M12 * M21;
-        if (Math.Abs(determinant) < 1e-12) throw new InvalidOperationException("Transform is not invertible.");
+        if (Math.Abs(determinant) < GeometryTolerancePolicy.DefaultMatrixDeterminantEpsilon) throw new InvalidOperationException("Transform is not invertible.");
         var inverse = new Matrix2D(M22 / determinant, -M12 / determinant, -M21 / determinant, M11 / determinant, 0, 0);
         return inverse with { OffsetX = -(OffsetX * inverse.M11 + OffsetY * inverse.M21), OffsetY = -(OffsetX * inverse.M12 + OffsetY * inverse.M22) };
     }

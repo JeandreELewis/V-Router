@@ -29,7 +29,7 @@ public sealed class DrillOperationCalculator : ICamOperationCalculator
                 for (var depth = Math.Min(drill.PeckDepthMm, drill.CutDepthMm);; depth = Math.Min(depth + drill.PeckDepthMm, drill.CutDepthMm))
                 {
                     toolpath.Moves.Add(new LinearMove(point, -depth, drill.PlungeRateMmPerMin));
-                    if (depth >= drill.CutDepthMm - 1e-9) break;
+                    if (depth >= drill.CutDepthMm - GeometryTolerancePolicy.DefaultEndpointEqualityMm) break;
                     toolpath.Moves.Add(new RapidMove(point, drill.RetractZMm));
                 }
             }
