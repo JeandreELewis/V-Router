@@ -22,6 +22,25 @@ public class CadFoundationTests
     [Fact] public void ThreePointArc_RejectsCollinearPoints() => Assert.Throws<ArgumentException>(() => GeometryAlgorithms.CreateThreePointArc(new(0, 0), new(5, 0), new(10, 0)));
 
     [Fact]
+    public void ThreePointArcRejectsNonFiniteDuplicateAndScaleRelativeCollinearInput()
+    {
+        Assert.Throws<ArgumentException>(()=>GeometryAlgorithms.CreateThreePointArc(new(double.NaN,0),new(5,5),new(10,0)));
+        Assert.Throws<ArgumentException>(()=>GeometryAlgorithms.CreateThreePointArc(new(0,0),new(0,0),new(10,0)));
+        Assert.Throws<ArgumentException>(()=>GeometryAlgorithms.CreateThreePointArc(new(1_000_000,1_000_000),new(1_000_005,1_000_000.0000000001),new(1_000_010,1_000_000)));
+    }
+
+    [Fact]
+    public void ParametricShapesRejectUnsafeNumericsAndZeroRadiusRoundedRectangleHasFourRealCorners()
+    {
+        Assert.Throws<ArgumentException>(()=>ParametricShapes.Polygon(new(double.PositiveInfinity,0),10,5,default));
+        Assert.Throws<ArgumentException>(()=>ParametricShapes.Polygon(new(0,0),10,10001,default));
+        Assert.Throws<ArgumentException>(()=>ParametricShapes.Star(new(0,0),10,double.NaN,5,default));
+        Assert.Throws<ArgumentException>(()=>ParametricShapes.Slot(new(0,0),0,4,default));
+        Assert.Throws<ArgumentException>(()=>ParametricShapes.RoundedRectangle(new(0,0),10,5,-1,default));
+        var rectangle=ParametricShapes.RoundedRectangle(new(2,3),10,5,0,default);Assert.Equal([new Point2D(2,3),new Point2D(12,3),new Point2D(12,8),new Point2D(2,8)],rectangle.Points);Assert.True(rectangle.IsClosed);
+    }
+
+    [Fact]
     public void TranslateAndClone_HandleEveryEntityWithoutReusingIds()
     {
         CadEntity[] entities = [new LineEntity { Start = new(0,0), End = new(5,5) }, new PolylineEntity { Points = [new(0,0), new(5,5)] }, new RectangleEntity { Width = 5, Height = 5 }, new CircleEntity { Radius = 2 }, new ArcEntity { Radius = 2, SweepAngleDegrees = 90 }, new EllipseEntity { RadiusX = 4, RadiusY = 2 }];
@@ -68,10 +87,20 @@ public class CadFoundationTests
     {
         var session = new DrawingToolSession(); var layer = Guid.NewGuid();
         session.SetTool(CanvasTool.Line); Assert.Null(session.PointerPressed(new(0,0), layer, 1)); Assert.IsType<LineEntity>(session.PointerPressed(new(10,0), layer, 1));
-        session.SetTool(CanvasTool.Polyline); session.PointerPressed(new(0,0), layer, 1); session.PointerPressed(new(5,0), layer, 1); Assert.IsType<PolylineEntity>(session.HandleKey(Key.C, layer));
+        session.SetTool(CanvasTool.Polyline); session.PointerPressed(new(0,0), layer, 1); session.PointerPressed(new(5,0), layer, 1);session.PointerPressed(new(5,5),layer,1); Assert.IsType<PolylineEntity>(session.HandleKey(Key.C, layer));
         session.SetTool(CanvasTool.Circle); session.PointerPressed(new(0,0), layer, 1); Assert.IsType<CircleEntity>(session.PointerPressed(new(5,0), layer, 1));
         session.SetTool(CanvasTool.Rectangle); session.PointerPressed(new(0,0), layer, 1); Assert.IsType<RectangleEntity>(session.PointerReleased(new(5,5), layer));
         session.SetTool(CanvasTool.Arc); session.PointerPressed(new(-5,0), layer, 1); session.PointerPressed(new(0,5), layer, 1); Assert.IsType<ArcEntity>(session.PointerPressed(new(5,0), layer, 1));
         session.SetTool(CanvasTool.DrillPoint);var drill=Assert.IsType<DrillPointEntity>(session.PointerPressed(new(7,9),layer,1));Assert.Equal(new Point2D(7,9),drill.Position);Assert.Equal(layer,drill.LayerId);
+    }
+
+    [Fact]
+    public void DrawingSessionRejectsCollapsedAndNonFiniteResultsAndEscapeCancelsWithoutOutput()
+    {
+        var session=new DrawingToolSession();var layer=Guid.NewGuid();
+        session.SetTool(CanvasTool.Line);Assert.Null(session.PointerPressed(new(1,1),layer,1));Assert.Null(session.PointerPressed(new(1,1),layer,1));Assert.True(session.IsActive);Assert.Null(session.HandleKey(Key.Escape,layer));Assert.False(session.IsActive);
+        session.SetTool(CanvasTool.Rectangle);session.PointerPressed(new(0,0),layer,1);Assert.Null(session.PointerReleased(new(0,10),layer));Assert.False(session.IsActive);
+        session.SetTool(CanvasTool.Polyline);session.PointerPressed(new(0,0),layer,1);session.PointerPressed(new(10,0),layer,1);Assert.Null(session.HandleKey(Key.C,layer));Assert.True(session.IsActive);session.PointerPressed(new(10,10),layer,1);Assert.IsType<PolylineEntity>(session.HandleKey(Key.C,layer));
+        session.SetTool(CanvasTool.DrillPoint);Assert.Null(session.PointerPressed(new(double.NaN,2),layer,1));
     }
 }

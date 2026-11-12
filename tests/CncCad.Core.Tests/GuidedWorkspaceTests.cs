@@ -59,6 +59,20 @@ public class GuidedWorkspaceTests
         var vm=ViewModel();vm.CreateJob(new JobSettings{WidthMm=100,HeightMm=100});var source=new PolylineEntity{LayerId=vm.Document.ActiveLayerId,Points=[new(10,10),new(50,10),new(50,40)]};vm.AddEntity(source);Assert.True(vm.CanOffsetSelection);vm.OffsetDistance=3;vm.OffsetJoin=CncCad.Cam.Profile.CadOffsetJoin.Miter;vm.OffsetSelection();var offset=Assert.IsType<PolylineEntity>(vm.Document.Entities.Single(entity=>entity.Id!=source.Id));Assert.Equal([new Point2D(10,13),new Point2D(47,13),new Point2D(47,40)],offset.Points);vm.Undo();Assert.Single(vm.Document.Entities);Assert.Same(source,vm.Document.Entities[0]);
     }
 
+    [Fact] public void ExactAndParametricConstructionIsValidatedUndoableAndNumericPolylineCancellationDoesNotMutate()
+    {
+        var vm=ViewModel();vm.CreateJob(new JobSettings{WidthMm=200,HeightMm=150});
+        vm.ActivePaletteItem=vm.CreationTools.Single(item=>item.Tool==CncCad.Rendering.Canvas.CanvasTool.Line);vm.Point1X=5;vm.Point1Y=7;vm.Point2X=25;vm.Point2Y=17;vm.CreateExact();var line=Assert.IsType<LineEntity>(Assert.Single(vm.Document.Entities));Assert.Equal(new Point2D(5,7),line.Start);vm.Undo();Assert.Empty(vm.Document.Entities);
+        vm.Point2X=double.NaN;Assert.Throws<InvalidOperationException>(vm.CreateExact);Assert.Empty(vm.Document.Entities);
+        vm.ActivePaletteItem=vm.CreationTools.Single(item=>item.Tool==CncCad.Rendering.Canvas.CanvasTool.Polyline);vm.Point1X=0;vm.Point1Y=0;vm.Point2X=10;vm.Point2Y=0;vm.AddNumericPolylineNode();vm.CancelNumericPolyline();Assert.Empty(vm.Document.Entities);Assert.False(vm.CanUndo);
+        vm.AddNumericPolylineNode();Assert.Throws<InvalidOperationException>(()=>vm.FinishNumericPolyline(true));Assert.Empty(vm.Document.Entities);vm.CancelNumericPolyline();
+        vm.Point1X=30;vm.Point1Y=40;vm.ShapeWidth=50;vm.ShapeHeight=20;vm.CornerRadius=0;vm.CreateRoundedRectangle();var rounded=Assert.IsType<PolylineEntity>(Assert.Single(vm.Document.Entities));Assert.Equal(4,rounded.Points.Count);vm.Undo();Assert.Empty(vm.Document.Entities);
+        vm.CreateSlot();Assert.All(Assert.IsType<PolylineEntity>(Assert.Single(vm.Document.Entities)).Points,point=>{Assert.True(double.IsFinite(point.X));Assert.True(double.IsFinite(point.Y));});vm.Undo();
+        vm.ShapeSides=6;vm.ShapeOuterRadius=15;vm.CreatePolygon();Assert.Equal(6,Assert.IsType<PolylineEntity>(Assert.Single(vm.Document.Entities)).Points.Count);vm.Undo();
+        vm.ShapeInnerRadius=7;vm.CreateStar();Assert.Equal(12,Assert.IsType<PolylineEntity>(Assert.Single(vm.Document.Entities)).Points.Count);vm.Undo();Assert.Empty(vm.Document.Entities);
+        vm.ShapeSides=10001;Assert.Throws<ArgumentException>(vm.CreatePolygon);Assert.Empty(vm.Document.Entities);
+    }
+
     [Fact] public void DuplicateAndPasteRemapGroupsAndCopiedTextGuideLinksWithoutLosingMetadata()
     {
         var vm=ViewModel();vm.CreateJob(new JobSettings{WidthMm=200,HeightMm=150});var group=Guid.NewGuid();var sheet=Guid.NewGuid();

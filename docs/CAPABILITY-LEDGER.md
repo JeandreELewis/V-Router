@@ -35,10 +35,10 @@ Status meanings:
 
 | Function | Status | Current behavior | Intentional difference / remaining gate |
 |---|---|---|---|
-| Line, rectangle, circle, drill point | Verified | Interactive and numeric construction; finite native entities; undoable | Full pointer/keyboard cancellation matrix remains for UI gate |
-| Polyline | Incomplete | Interactive/numeric open or closed line chain | Native arc/Bézier segments require VectorPath; complete cancellation and node tests remain |
-| Three-point arc | Incomplete | Native arc from three non-collinear points | Transformed and near-collinear property tests remain |
-| Slot, rounded rectangle, polygon, star | Incomplete | Parametric creation is available | Per-shape pointer/numeric/history tests remain |
+| Line, rectangle, circle, drill point | Verified | Interactive and numeric construction creates finite non-collapsed native entities and one undoable mutation | Core pointer/keyboard completion, invalid-input and Escape cancellation fixtures pass |
+| Polyline | Verified | Interactive/numeric open chains require two nodes; closed chains require three; duplicate/non-finite nodes cannot produce geometry | Enter/C completion, Escape and explicit numeric Cancel preserve the document and history; native arc/Bézier segments remain VectorPath geometry |
+| Three-point arc | Verified | Stable translated three-point circumcircle construction rejects non-finite, duplicate, collinear and scale-relative near-collinear inputs | Semicircle, large-coordinate degeneracy, interactive completion and cancellation fixtures pass |
+| Slot, rounded rectangle, polygon, star | Verified | Finite positive dimensions, bounded point counts and undoable closed vectors; zero-radius rounded rectangles contain four real corners without collapsed duplicates | Per-shape success/undo and invalid/non-finite fixtures pass |
 | Move and exact position | Incomplete | World-space movement and lower-left positioning | Full transformed mixed-selection test matrix remains |
 | Rotate, scale and mirror | Incomplete | Transform-based edits preserve native geometry | Pivot/property tests and cancellation tests remain |
 | Align and distribute | Incomplete | Multi-entity alignment and distribution | Stable ordering and mixed-transform property tests remain |

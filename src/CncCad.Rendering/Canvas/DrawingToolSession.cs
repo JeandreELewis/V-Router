@@ -16,6 +16,7 @@ public sealed class DrawingToolSession
     public void SetTool(CanvasTool tool) { if (Tool != tool) Cancel(); Tool = tool; }
     public CadEntity? PointerPressed(Point2D point, Guid layerId, int clickCount)
     {
+        if(!Finite(point))return null;
         _cursor = point;
         switch (Tool)
         {
@@ -23,7 +24,7 @@ public sealed class DrawingToolSession
             case CanvasTool.Rectangle: _points.Clear(); _points.Add(point); _dragging = true; break;
             case CanvasTool.Line:
                 if (_points.Count == 0) _points.Add(point);
-                else { var entity = new LineEntity { LayerId = layerId, Start = _points[0], End = point }; Cancel(); return entity; }
+                else { if(_points[0].DistanceTo(point)<=1e-6)return null;var entity = new LineEntity { LayerId = layerId, Start = _points[0], End = point }; Cancel(); return entity; }
                 break;
             case CanvasTool.Circle:
                 if (_points.Count == 0) _points.Add(point);
@@ -47,10 +48,10 @@ public sealed class DrawingToolSession
 
     public CadEntity? PointerReleased(Point2D point, Guid layerId)
     {
-        if (Tool != CanvasTool.Rectangle || !_dragging || _points.Count == 0) return null;
+        if (Tool != CanvasTool.Rectangle || !_dragging || _points.Count == 0||!Finite(point)) return null;
         _dragging = false;
         var start = _points[0]; Cancel();
-        if (start.DistanceTo(point) <= 1e-6) return null;
+        if (Math.Abs(start.X-point.X)<=1e-6||Math.Abs(start.Y-point.Y)<=1e-6) return null;
         return new RectangleEntity { LayerId = layerId, Origin = new(Math.Min(start.X, point.X), Math.Min(start.Y, point.Y)), Width = Math.Abs(point.X - start.X), Height = Math.Abs(point.Y - start.Y) };
     }
 
@@ -62,7 +63,7 @@ public sealed class DrawingToolSession
         return null;
     }
 
-    public void PointerMoved(Point2D point) { _cursor = point; UpdateMeasurement(); }
+    public void PointerMoved(Point2D point) { if(!Finite(point))return;_cursor = point; UpdateMeasurement(); }
     public void Cancel() { _points.Clear(); _dragging = false; Measurement = DrawingMeasurement.Idle; }
 
     public IReadOnlyList<CadEntity> Preview(Guid layerId)
@@ -87,7 +88,7 @@ public sealed class DrawingToolSession
     }
     private CadEntity? FinishPolyline(Guid layerId, bool closed)
     {
-        if (_points.Count < 2) { Cancel(); return null; }
+        if (_points.Count < (closed?3:2)) return null;
         var entity = new PolylineEntity { LayerId = layerId, Points = [.. _points], IsClosed = closed }; Cancel(); return entity;
     }
     private void UpdateMeasurement()
@@ -115,4 +116,5 @@ public sealed class DrawingToolSession
         }
         catch (ArgumentException) { return new("3-Point Arc", DrawingPhase.DefiningGeometry, [new("Chord", _points[0].DistanceTo(_cursor))], "Move off the construction line"); }
     }
+    private static bool Finite(Point2D point)=>double.IsFinite(point.X)&&double.IsFinite(point.Y);
 }

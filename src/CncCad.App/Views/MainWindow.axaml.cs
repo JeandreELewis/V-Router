@@ -199,6 +199,7 @@ public partial class MainWindow : Window
     private void AddNumericNode_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.AddNumericPolylineNode);
     private void FinishNumericPolyline_Click(object? s,RoutedEventArgs e)=>RunCadAction(()=>ViewModel.FinishNumericPolyline(false));
     private void CloseNumericPolyline_Click(object? s,RoutedEventArgs e)=>RunCadAction(()=>ViewModel.FinishNumericPolyline(true));
+    private void CancelNumericPolyline_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.CancelNumericPolyline);
     private void Rotate_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.RotateSelection);
     private void Scale_Click(object? s,RoutedEventArgs e)=>RunCadAction(ViewModel.ScaleSelection);
     private void MirrorH_Click(object? s,RoutedEventArgs e)=>RunCadAction(()=>ViewModel.MirrorSelection(true));

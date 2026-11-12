@@ -6,21 +6,22 @@ public static class GeometryAlgorithms
 {
     public static ArcEntity CreateThreePointArc(Point2D start, Point2D pointOnArc, Point2D end, Guid layerId = default)
     {
-        var determinant = 2 * (start.X * (pointOnArc.Y - end.Y) + pointOnArc.X * (end.Y - start.Y) + end.X * (start.Y - pointOnArc.Y));
-        if (Math.Abs(determinant) < 1e-9) throw new ArgumentException("The three arc points cannot be collinear.");
-        var startSquared = start.X * start.X + start.Y * start.Y;
-        var middleSquared = pointOnArc.X * pointOnArc.X + pointOnArc.Y * pointOnArc.Y;
-        var endSquared = end.X * end.X + end.Y * end.Y;
-        var center = new Point2D(
-            (startSquared * (pointOnArc.Y - end.Y) + middleSquared * (end.Y - start.Y) + endSquared * (start.Y - pointOnArc.Y)) / determinant,
-            (startSquared * (end.X - pointOnArc.X) + middleSquared * (start.X - end.X) + endSquared * (pointOnArc.X - start.X)) / determinant);
+        if(!Finite(start)||!Finite(pointOnArc)||!Finite(end))throw new ArgumentException("The three arc points must contain finite coordinates.");
+        var middle=pointOnArc-start;var last=end-start;var middleLengthSquared=middle.X*middle.X+middle.Y*middle.Y;var lastLengthSquared=last.X*last.X+last.Y*last.Y;var endSpan=end-pointOnArc;
+        if(middleLengthSquared<=1e-18||lastLengthSquared<=1e-18||endSpan.Length<=1e-9)throw new ArgumentException("The three arc points must be distinct.");
+        var cross=middle.X*last.Y-middle.Y*last.X;var scale=Math.Max(middleLengthSquared,lastLengthSquared);
+        if (Math.Abs(cross) <= 1e-10*Math.Max(1,scale)) throw new ArgumentException("The three arc points cannot be collinear.");
+        var determinant=2*cross;
+        var center = start+new Vector2D((last.Y*middleLengthSquared-middle.Y*lastLengthSquared)/determinant,(middle.X*lastLengthSquared-last.X*middleLengthSquared)/determinant);
+        if(!Finite(center))throw new ArgumentException("The three arc points do not define a finite circle.");
         var startAngle = Angle(center, start);
         var middleAngle = Angle(center, pointOnArc);
         var endAngle = Angle(center, end);
         var ccwSweep = Normalize(endAngle - startAngle);
         var middleCcw = Normalize(middleAngle - startAngle);
         var sweep = middleCcw <= ccwSweep ? ccwSweep : ccwSweep - 360;
-        return new ArcEntity { LayerId = layerId, Center = center, Radius = center.DistanceTo(start), StartAngleDegrees = startAngle, SweepAngleDegrees = sweep };
+        var radius=center.DistanceTo(start);if(!double.IsFinite(radius)||radius<=1e-9)throw new ArgumentException("The three arc points do not define a usable radius.");
+        return new ArcEntity { LayerId = layerId, Center = center, Radius = radius, StartAngleDegrees = startAngle, SweepAngleDegrees = sweep };
     }
 
     public static Point2D PointOnArc(ArcEntity arc, double angleDegrees)
@@ -42,4 +43,5 @@ public static class GeometryAlgorithms
 
     private static double Angle(Point2D center, Point2D point) => Normalize(Math.Atan2(point.Y - center.Y, point.X - center.X) * 180 / Math.PI);
     private static double Normalize(double angle) { angle %= 360; return angle < 0 ? angle + 360 : angle; }
+    private static bool Finite(Point2D point)=>double.IsFinite(point.X)&&double.IsFinite(point.Y);
 }

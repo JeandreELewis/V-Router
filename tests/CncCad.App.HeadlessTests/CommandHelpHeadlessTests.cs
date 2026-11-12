@@ -110,6 +110,17 @@ public sealed class CommandHelpHeadlessTests
     }
 
     [AvaloniaFact]
+    public void ExactPolylineCancelIsVisibleAtMinimumSizeAndDoesNotCreateHistoryOrGeometry()
+    {
+        var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent());vm.CreateJob(new JobSettings{Name="Exact polyline",WidthMm=100,HeightMm=100,ThicknessMm=18});vm.ActivePaletteItem=vm.CreationTools.Single(item=>item.Tool==CanvasTool.Polyline);vm.OpenDesignTask(DesignTaskPage.Construction);vm.Point1X=1;vm.Point1Y=2;vm.Point2X=10;vm.Point2Y=2;vm.AddNumericPolylineNode();var window=new MainWindow{DataContext=vm,Width=1100,Height=700};window.Show();Dispatcher.UIThread.RunJobs();
+        try
+        {
+            var cancel=window.GetVisualDescendants().OfType<Button>().Single(control=>control.IsVisible&&Equals(control.Content,"Cancel"));cancel.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Dispatcher.UIThread.RunJobs();Assert.Empty(vm.Document.Entities);Assert.False(vm.CanUndo);Assert.Contains("cancelled",vm.Message,StringComparison.OrdinalIgnoreCase);
+        }
+        finally{window.Close();}
+    }
+
+    [AvaloniaFact]
     public void ClickingANodeSelectsItWithoutCreatingANoOpHistoryEntry()
     {
         var vm=new MainWindowViewModel(new MemoryTools(),new MemoryRecent());vm.CreateJob(new JobSettings{Name="Node selection",WidthMm=100,HeightMm=100,ThicknessMm=18});var path=new PolylineEntity{LayerId=vm.Document.ActiveLayerId,Points=[new(20,20),new(70,20),new(70,60)],IsClosed=false};vm.AddEntity(path);vm.OpenDesignTask(DesignTaskPage.Edit);var window=new MainWindow{DataContext=vm,Width=1100,Height=700};window.Show();Dispatcher.UIThread.RunJobs();
